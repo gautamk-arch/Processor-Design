@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <algorithm>
 #include <sstream>
+
 static string removeCommentsAndSpace(std::string& line,bool& inBlockofComments){
     if(inBlockofComments){
         size_t end= line.find("*/");
@@ -35,12 +36,37 @@ static string removeCommentsAndSpace(std::string& line,bool& inBlockofComments){
     }
 
     if(line.empty()) return "";
-    size_t first=line.find_first_not_of(" /t/r/n");
+    size_t first=line.find_first_not_of(" \t\r\n");
     if(first==string::npos) return "";
-    size_t last=line.find_last_not_of(" /t/r/n");
+    size_t last=line.find_last_not_of(" \t\r\n");
     return line.substr(first,(last-first+1));
 }
 
+static int32_t CheckImmediate(const string& immStr,int mod,int lineNum,vector<string>& errors){
+    try{
+        long long rawImm=std::stoll(immStr,nullptr,0);
+        if(mod==0){
+            if(rawImm<-32768||rawImm>32767){
+                errors.push_back("Line " + std::to_string(lineNum) + ": Imm out of bounds mod=0");
+            }
+        }
+        else if(mod==1){
+            if (rawImm<0||rawImm >65535) {
+                errors.push_back("Line " + std::to_string(lineNum) + ": Imm out of bounds mod=1");
+            }
+        }
+        else if(mod==2){
+            if (rawImm <-32768||rawImm>65535) {
+                errors.push_back("Line " + std::to_string(lineNum) + ": Imm out of bounds mod=2");
+            }
+        }
+        return static_cast<int32_t>(rawImm);
+    }
+    catch(...){
+        errors.push_back("Line " + std::to_string(lineNum) + ": Illegal imm value or format'" + immStr + "'");
+        return 0;
+    }
+}
 static int parseRegister(const std::string& regStr,int lineNum,vector<string>& errors){
     if(regStr== "sp") return 14;
     if(regStr=="ra") return 15;
@@ -98,13 +124,12 @@ vector<uint32_t> assemble(const string& src,vector<string>& errors){
 
         if(!mnemonic.empty()){
             char lastchar=mnemonic.back();
-            if(lastchar=='u'){
-                inst.mod=1;
+            if(lastchar=='u' || lastchar=='h'){
+                inst.mod = (lastchar=='u')? 1:2;
                 mnemonic.pop_back();
-            }
-            else if(lastchar=='h'){
-                inst.mod=2;
-                mnemonic.pop_back();      
+                if(!mnemonic.empty() && mnemonic.back()=='.'){
+                    mnemonic.pop_back();
+                }
             }
         }
 
@@ -153,10 +178,16 @@ vector<uint32_t> assemble(const string& src,vector<string>& errors){
 
         if(currOp<=13){
             if(currOp!=13){
-                inst.rd=parseRegister(ops[0],lNum,errors);
-                int nextOpIndex=1;
-                if(currOp!=8 && currOp!=9){
-                    inst.rs1=parseRegister(ops[nextOpIndex++],lNum,errors);
+                int nextOpIndex = 0;
+                
+                if (currOp == 5) {
+                    inst.rd = 0; 
+                    inst.rs1 = parseRegister(ops[nextOpIndex++], lNum, errors);
+                } else {
+                    inst.rd = parseRegister(ops[nextOpIndex++], lNum, errors);
+                    if(currOp!=8 && currOp!=9){
+                        inst.rs1 = parseRegister(ops[nextOpIndex++], lNum, errors);
+                    }
                 }
 
                 if(nextOpIndex<ops.size()){
@@ -167,9 +198,9 @@ vector<uint32_t> assemble(const string& src,vector<string>& errors){
                             errors.push_back("Line "+std::to_string(lNum)+": u/h modifiers used with a register operand");
                         }
                     }
-                    else{
+                    else {
                         inst.isImm=true;
-                        inst.imm=std::stoi(ops[nextOpIndex],nullptr,0);
+                        inst.imm=CheckImmediate(ops[nextOpIndex], inst.mod, lNum, errors);
                     }
                 }
             }
@@ -182,6 +213,9 @@ vector<uint32_t> assemble(const string& src,vector<string>& errors){
             
             if(bracketStart!=string::npos && bracketEnd!=string::npos){
                 string immStr=ops[1].substr(0,bracketStart);
+                if(inst.mod!=0){
+                    errors.push_back("Line " + std::to_string(lNum) + ": ld/st having modifiers");
+                }
                 inst.imm=immStr.empty()? 0:std::stoi(immStr,nullptr,0);
 
                 string rs1Str=ops[1].substr(bracketStart+1,bracketEnd-bracketStart-1);
