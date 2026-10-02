@@ -32,8 +32,13 @@ void CPU::loadHex(const vector<string> &hexLines){
     instruction_limit = i*4;
 }
 
+void CPU::checkMemoryAccess(uint32_t addr) const {
+    if(addr%4!=0) throw Misaligned();
+    if(addr+3>=cap_of_data_mem) throw BadAddress();
+}
+
 uint32_t CPU::fetchInst(){
-    if(pc >= instruction_limit) throw std::out_of_range("PC out of bounds");
+    if(pc >= instruction_limit) throw PCOutofRange();
     return instMem[pc/4];
 }
 
@@ -42,11 +47,30 @@ void CPU::run(){
     cout << "Execution stopped.\n";
 }
 
-void CPU::step(){
+void CPU::step(){ 
     if (pc >= instruction_limit) return;
-    uint32_t word = fetchInst();
-    Instruction inst = decode(word);
-    execute(inst);
+
+    static uint32_t cycleCount=0;
+    cycleCount++;
+    uint32_t currPC=pc;
+    uint32_t word;
+
+    try{
+        word=fetchInst();
+        Instruction inst=decode(word);
+        execute(inst);
+    }
+    catch(const std::exception &e) {
+        std::cerr<<"\n------------------------------\n";
+        std::cerr<<"HARDWARE EXCEPTION: "<<e.what()<<"\n";
+        std::cerr<<"Cycle   :"<<std::dec<<cycleCount<<"\n";
+        std::cerr<<"PC  : 0x"<<std::setfill('0')<<std::setw(8)<<std::hex<<currPC<<"\n";
+        std::cerr<<"Instruction : 0x"<<std::setfill('0')<<std::setw(8)<<std::hex<<word<<"\n";
+        std::cerr<<"------------------------------\n";
+
+        pc=instruction_limit;
+    }
+
 }
 
 void CPU::execute (Instruction inst){
@@ -61,11 +85,11 @@ void CPU::execute (Instruction inst){
         case Opcode::sub: regs[inst.rd] = A - B; break;
         case Opcode::mul: regs[inst.rd] = A * B; break;
         case Opcode::div: 
-        if (B == 0) throw std::runtime_error("DivideByZero");
+        if (B == 0) throw DivideByZero();
         regs[inst.rd] = A / B; 
         break;
         case Opcode::mod: 
-        if (B == 0) throw std::runtime_error("DivideByZero");
+        if (B == 0) throw DivideByZero();
         regs[inst.rd] = A % B; 
         break;
 
@@ -94,13 +118,16 @@ void CPU::execute (Instruction inst){
         // Load and store instructions. Assuming Little endian
         case Opcode::ld:{
             uint32_t addr = A + B;
-            if (addr + 3 >= cap_of_data_mem) throw std::out_of_range("Data loading failed. Out of bounds");
+            checkMemoryAccess(addr);
+
+            if(inst.rs1==sp && addr>=stack_base) throw StackUnderflow();
             regs[inst.rd] = (dataMem[addr])|(dataMem[addr+1]<<8)|(dataMem[addr+2]<<16)|(dataMem[addr+3]<<24);
             break;
         }
         case Opcode::st:{
             uint32_t addr = A + B;
-            if (addr + 3 >= cap_of_data_mem) throw std::out_of_range("Data storing failed. Out of bounds");
+            checkMemoryAccess(addr);
+            if (inst.rs1==sp && addr<stack_limit) throw StackOverflow();
             dataMem[addr] = regs[inst.rd] & 0xFF;
             dataMem[addr+1] = (regs[inst.rd]>>8) & 0xFF;
             dataMem[addr+2] = (regs[inst.rd]>>16) & 0xFF;
@@ -127,7 +154,12 @@ void CPU::execute (Instruction inst){
             pc = regs[15];
             break;
         default:
-            throw std::runtime_error("Not a valid instruction."); // to handle opcodes from 21 to 31
+            throw IllegalInstruction(); // to handle opcodes from 21 to 31
+    }
+    // StackGuard - to check inst directly  writes to sp
+    if(inst.rd==sp){
+        if(regs[sp]<stack_limit) throw StackOverflow();
+        if(regs[sp]>stack_base) throw StackUnderflow();
     }
 }
 
@@ -144,4 +176,29 @@ void CPU::dumpRegisters() const{
         }
     }
     cout << std::dec << "-----------------\n";
+}
+
+void CPU::printStack() const{
+    cout<<"\n---- ASCII STACK VISUALIZER ---\n";
+    for(uint32_t addr =stack_base-4;addr>=stack_limit;addr-=4){
+        cout<<"0x"<<std::setfill('0') << std::setw(8) <<std::hex <<addr << " : ";
+
+        if(addr<regs[sp]) {
+            cout<< "....";
+        }
+        else{
+            uint32_t word=dataMem[addr] | (dataMem[addr+1]<<8) | (dataMem[addr+2]<<16) | (dataMem[addr+3]<<24);
+            cout<<"0x"<<std::setfill('0')<<std::setw(8) <<std::hex<<word;
+        }
+
+        if(addr==regs[sp]){
+            cout<<" <-- sp";
+        }
+        if(addr==stack_base-4){
+            cout<<" [STACK BASE]";
+        }
+        cout<<"\n";
+        if(addr==0) break;
+    }
+    cout<<std::dec<<"------------------------\n";
 }

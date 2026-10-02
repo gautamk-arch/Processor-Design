@@ -1,5 +1,6 @@
 #pragma once
 #include "isa.h"
+#include "exceptions.h"
 #include <cstdint>
 #include <iostream>
 #include <vector>
@@ -11,6 +12,8 @@ const int cap_of_data_mem = 4096;
 const int sp = 14;
 const int ra = 15;
 
+const int32_t stack_base=cap_of_data_mem;
+const int32_t stack_limit=cap_of_data_mem-1024;
 class CPU
 {
 private:
@@ -26,6 +29,7 @@ private:
 
     uint32_t fetchInst();
 
+    void checkMemoryAccess(uint32_t addr) const; //to keep stackguard
 public:
     CPU();
     void reset();
@@ -36,4 +40,6 @@ public:
     void execute(Instruction inst);
 
     void dumpRegisters() const;
+
+    void printStack() const; //ASCII stack visualizer
 };
