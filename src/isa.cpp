@@ -1,5 +1,5 @@
 #include "isa.h"
-uint32_t immValue(int mod,uint16_t imm16){
+uint32_t ImmValue(int mod,uint16_t imm16){
     if(mod==0){
         int16_t signed_imm= static_cast<int16_t>(imm16);
         return static_cast<uint32_t>(static_cast<int32_t>(signed_imm));
