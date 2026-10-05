@@ -16,6 +16,7 @@ CPU::CPU(){
 void CPU::reset(){
     pc = 0;
     regs.fill(0);
+    regs[sp]=stack_base;
     flag_E = false;
     flag_GT = false;
     instruction_limit = 0;

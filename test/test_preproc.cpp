@@ -30,9 +30,9 @@ int main()
     vector<testcase> tests;
     tests={
         {"Basic mov instruction","mov r1, 10","mov r1, 10\n", 0},
-        {"Testing PUSH","push r1"," sub sp,sp,4\n   st r1, 0(sp)\n",0},
-        {"Testing POP","pop r2","   ld r2, 0(sp)\n add sp,sp,4\n",0},
-        {"Testing case insensitivity","PuSh r3","   sub sp,sp,4\n   st r3,0(sp)\n",0},
+        {"Testing PUSH","push r1","\tsub sp,sp,4\n\tst r1, 0[sp]\n",0},
+        {"Testing POP","pop r2","\tld r2, 0[sp]\n\tadd sp,sp,4\n",0},
+        {"Testing case insensitivity","PuSh r3","\tsub sp,sp,4\n\tst r3, 0[sp]\n",0},
         {"Testing missing register","push","push\n",1},
         {"Testing full line '@' comment handling","@ this is a comment","@ this is a comment\n",0}
     };

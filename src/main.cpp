@@ -5,6 +5,7 @@
 #include <string>
 #include "assembler.h"
 #include "disassembler.h"
+#include "preprocessor.h"
 #include "cpu.h"
 
 using namespace std;
@@ -32,7 +33,8 @@ int main(int argc, char* argv[]){
 
     // Passing the source code through assembler to generate hex file
     vector<string> errors;
-    vector<string> assembled_code = assemble(sourceCode, errors);
+    string expandedCode=expandMacros(sourceCode,errors);
+    vector<string> assembled_code = assemble(expandedCode, errors);
 
     if(!errors.empty()){
         cerr << "--- Assembler errors ---\n";
