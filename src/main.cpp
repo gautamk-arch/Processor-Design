@@ -3,9 +3,9 @@
 #include <sstream>
 #include <vector>
 #include <string>
-#include <assembler.h>
-#include <disassembler.h>
-#include <cpu.h>
+#include "assembler.h"
+#include "disassembler.h"
+#include "cpu.h"
 
 using namespace std;
 

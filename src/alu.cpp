@@ -1,4 +1,3 @@
-#pragma once
 #include <cstdint>
 
 enum class aluop {
@@ -186,7 +185,7 @@ public:
 
             case aluop::LSL: res.val = (int32_t)shift(a, b, true,  false); break;
             case aluop::LSR: res.val = (int32_t)shift(a, b, false, false); break;
-            case aluop::ASR: res.val = (int32_t)shift(a, b, false, true);  break`   1;
+            case aluop::ASR: res.val = (int32_t)shift(a, b, false, true);  break;
         }
         return res;
     }
