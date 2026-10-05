@@ -1,4 +1,3 @@
-#pragma once
 #include "assembler.h"
 #include "isa.h"
 #include <unordered_map>

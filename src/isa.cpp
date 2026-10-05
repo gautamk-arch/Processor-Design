@@ -1,4 +1,3 @@
-#pragma once
 #include "isa.h"
 uint32_t immValue(int mod,uint16_t imm16){
     if(mod==0){

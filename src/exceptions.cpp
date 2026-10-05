@@ -1,4 +1,3 @@
-#pragma once
 #include <stdexcept>
 #include <string>
 class StackOverflow : public std::runtime_error
