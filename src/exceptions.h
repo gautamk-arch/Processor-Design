@@ -1,44 +1,45 @@
 #pragma once
 #include <stdexcept>
 #include <string>
+
 class StackOverflow : public std::runtime_error
 {
 public:
-    StackOverflow() : std::runtime_error("StackOverflow: Stack limit exceeded") {}
+    StackOverflow();
 };
 
 class StackUnderflow : public std::runtime_error
 {
 public:
-    StackUnderflow() : std::runtime_error("StackUnderflow: Popped beyond stack base") {}
+    StackUnderflow();
 };
 
 class IllegalInstruction : public std::runtime_error
 {
 public:
-    IllegalInstruction() : std::runtime_error("IllegalInstruction: Invalid opcode") {}
+    IllegalInstruction();
 };
 
 class DivideByZero : public std::runtime_error
 {
 public:
-    DivideByZero() : std::runtime_error("DivideByZero : Attempting to divide by zero") {}
+    DivideByZero();
 };
 
 class Misaligned : public std::runtime_error
 {
 public: 
-    Misaligned() : std::runtime_error("Misaligned : Memory access not properly aligned") {}
+    Misaligned();
 };
 
 class BadAddress : public std::runtime_error
 {
 public:
-    BadAddress() : std::runtime_error("BadAddress : Memory access out of bounds") {}
+    BadAddress();
 };
 
 class PCOutofRange : public std::runtime_error
 {
 public:
-    PCOutofRange() : std::runtime_error("PCOutofRange : Program counter exceeded instruction limit") {}
+    PCOutofRange();
 };
