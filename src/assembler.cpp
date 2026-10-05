@@ -4,7 +4,7 @@
 #include <unordered_map>
 #include <algorithm>
 #include <sstream>
-
+#include <iomanip>
 static string removeCommentsAndSpace(std::string& line,bool& inBlockofComments){
     if(inBlockofComments){
         size_t end= line.find("*/");
@@ -81,8 +81,8 @@ static int parseRegister(const std::string& regStr,int lineNum,vector<string>& e
     return 0;
 }
 
-vector<uint32_t> assemble(const string& src,vector<string>& errors){
-    vector<uint32_t> machineCode;
+vector<string> assemble(const string& src,vector<string>& errors){
+    vector<string> machineCode;
     std::unordered_map<string,uint32_t> symbolTable;
     std::vector<std::pair<std::string,int>> cleanedLines;
 
@@ -101,10 +101,10 @@ vector<uint32_t> assemble(const string& src,vector<string>& errors){
         size_t colonPos= stripped.find(':');
         if(colonPos!=string::npos){
             string label=stripped.substr(0,colonPos);
-            label.erase(label.find_last_not_of(" /t")+1);
+            label.erase(label.find_last_not_of(" \t")+1);
             symbolTable[label]=currAddr;
             stripped=stripped.substr(colonPos+1);
-            stripped.erase(0,stripped.find_first_not_of(" /t"));
+            stripped.erase(0,stripped.find_first_not_of(" \t"));
         }
         if(!stripped.empty()){
             cleanedLines.push_back({stripped,lineNum});
@@ -136,7 +136,7 @@ vector<uint32_t> assemble(const string& src,vector<string>& errors){
         string operandStr;
         std::getline(iss,operandStr);
         if(!operandStr.empty()){
-            operandStr.erase(0,operandStr.find_first_not_of(" /t"));
+            operandStr.erase(0,operandStr.find_first_not_of(" \t"));
             operandStr.erase(std::remove_if(operandStr.begin(),operandStr.end(),::isspace),operandStr.end());
         }
 
@@ -241,7 +241,10 @@ vector<uint32_t> assemble(const string& src,vector<string>& errors){
             }
             inst.isImm=true;
         }
-        machineCode.push_back(encode(inst));
+        uint32_t encodedInst = encode(inst);
+        std::stringstream hexStream;
+        hexStream << std::setfill('0') << std::setw(8) << std::hex << encodedInst;
+        machineCode.push_back(hexStream.str());
         currAddr+=4;
     }
     return machineCode;
