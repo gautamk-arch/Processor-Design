@@ -2,7 +2,7 @@
 #include <cstdint>
 
 enum class aluop {
-    ADD, SUB, MUL, DIV, MOD, CMP, AND, OR, NOT, MOV, LSL, LSR, ASR
+    ADD, SUB, MUL, DIV, MOD, CMP, AND, OR, NOT, MOV, LSL, LSR, ASR , LAND , LOR, LNOT
 };
 
 struct aluResult {
@@ -11,6 +11,9 @@ struct aluResult {
     bool flag_E = false;    // CMP: A == B
     bool flag_GT = false;   // CMP: A > B (signed)
     bool flag_ERR = false;  // DIV/MOD by zero
+    bool flag_LAND = false;
+    bool flag_LOR = false;
+    bool flag_LNOT = false;
 };
 
 class ALU {
@@ -178,7 +181,53 @@ public:
                 res.flag_GT = !res.flag_E && !LT;
                 break;
             }
-
+            case aluop::LAND: {
+                if(A!=0)
+                {
+                    if(B!=0)
+                    {
+                        res.flag_LAND=true;
+                    }
+                    else
+                    {
+                        res.flag_LAND=false;
+                    }
+                }
+                else
+                {
+                    res.flag_LAND=false;
+                }
+                break;
+            }
+            case aluop::LOR: {
+                if(A!=0)
+                {
+                    
+                    res.flag_LOR=true;
+                    
+                }
+                else if(B!=0)
+                {
+                    res.flag_LOR=true;
+                }
+                else
+                {
+                    res.flag_LOR=false;
+                }
+                break;
+            }
+            
+            case aluop::LNOT: {
+                if(A!=0)
+                {
+                    res.flag_LNOT=false;
+                }
+                else
+                {
+                    res.flag_LNOT=true;
+                }
+                break;
+            }
             case aluop::AND: res.val = A & B;  break;
             case aluop::OR:  res.val = A | B;  break;
             case aluop::NOT: res.val = ~A;     break;
@@ -186,7 +235,7 @@ public:
 
             case aluop::LSL: res.val = (int32_t)shift(a, b, true,  false); break;
             case aluop::LSR: res.val = (int32_t)shift(a, b, false, false); break;
-            case aluop::ASR: res.val = (int32_t)shift(a, b, false, true);  break`   1;
+            case aluop::ASR: res.val = (int32_t)shift(a, b, false, true);  break;
         }
         return res;
     }
