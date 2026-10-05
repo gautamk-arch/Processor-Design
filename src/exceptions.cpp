@@ -1,43 +1,17 @@
 #include <stdexcept>
 #include <string>
-class StackOverflow : public std::runtime_error
-{
-public:
-    StackOverflow() : std::runtime_error("StackOverflow: Stack limit exceeded") {}
-};
+#include "exceptions.h"
 
-class StackUnderflow : public std::runtime_error
-{
-public:
-    StackUnderflow() : std::runtime_error("StackUnderflow: Popped beyond stack base") {}
-};
+StackOverflow::StackOverflow() : std::runtime_error("StackOverflow: Stack limit exceeded") {}
 
-class IllegalInstruction : public std::runtime_error
-{
-public:
-    IllegalInstruction() : std::runtime_error("IllegalInstruction: Invalid opcode") {}
-};
+StackUnderflow::StackUnderflow() : std::runtime_error("StackUnderflow: Popped beyond stack base") {}
 
-class DivideByZero : public std::runtime_error
-{
-public:
-    DivideByZero() : std::runtime_error("DivideByZero : Attempting to divide by zero") {}
-};
+IllegalInstruction::IllegalInstruction() : std::runtime_error("IllegalInstruction: Invalid opcode") {}
 
-class Misaligned : public std::runtime_error
-{
-public: 
-    Misaligned() : std::runtime_error("Misaligned : Memory access not properly aligned") {}
-};
+DivideByZero::DivideByZero() : std::runtime_error("DivideByZero : Attempting to divide by zero") {}
 
-class BadAddress : public std::runtime_error
-{
-public:
-    BadAddress() : std::runtime_error("BadAddress : Memory access out of bounds") {}
-};
+Misaligned::Misaligned() : std::runtime_error("Misaligned : Memory access not properly aligned") {}
 
-class PCOutofRange : public std::runtime_error
-{
-public:
-    PCOutofRange() : std::runtime_error("PCOutofRange : Program counter exceeded instruction limit") {}
-};
+BadAddress::BadAddress() : std::runtime_error("BadAddress : Memory access out of bounds"){}
+
+PCOutofRange::PCOutofRange() : std::runtime_error("PCOutofRange : Program counter exceeded instruction limit") {}
