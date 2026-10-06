@@ -105,23 +105,27 @@ void CPU::execute (Instruction inst){
         regs[inst.rd] = alu.execute(aluop::MUL,A,B).val;
         break;
         case Opcode::div: 
+        {
         aluResult res = alu.execute(aluop::DIV,A,B);
         if (res.flag_ERR) throw DivideByZero();
         regs[inst.rd] = res.val; 
         break;
+        }
         case Opcode::mod: 
+        {
         aluResult res = alu.execute(aluop::MOD,A,B);
         if (res.flag_ERR) throw DivideByZero();
         regs[inst.rd] = res.val; 
         break;
-
+        }
         // Compare instruction
         case Opcode::cmp:
+        {
         aluResult res = alu.execute(aluop::CMP,A,B);
         flag_E = res.flag_E;
         flag_GT = res.flag_GT;
         break;
-
+        }
         // Logical instructions
         case Opcode::and_op: regs[inst.rd] = alu.execute(aluop::AND,A,B).val; break;
         case Opcode::or_op: regs[inst.rd] = alu.execute(aluop::OR,A,B).val; break;
@@ -168,6 +172,15 @@ void CPU::execute (Instruction inst){
         case Opcode::bgt:
             if(flag_GT) pc = current_pc + (inst.imm << 2);
             break;
+        case Opcode::bland:
+            if(flag_land) pc = current_pc + (inst.imm << 2);
+            break;
+        case Opcode::blor:
+            if(flag_lor) pc = current_pc + (inst.imm << 2);
+            break;
+        case Opcode::blnot:
+            if(flag_lnot) pc = current_pc + (inst.imm << 2);
+            break;
         
         case Opcode::call:
             regs[15] = pc;
@@ -177,17 +190,23 @@ void CPU::execute (Instruction inst){
             pc = regs[15];
             break;
         case Opcode::land:
+        {
             aluResult res = alu.execute(aluop::LAND,A,B);
             flag_land = res.flag_LAND;
             break;
+        }
         case Opcode::lor:
+        {
             aluResult res = alu.execute(aluop::LOR,A,B);
             flag_lor = res.flag_LOR;
             break;
+        }
         case Opcode::lnot:
+        {
             aluResult res = alu.execute(aluop::LNOT,A,B);
             flag_lnot = res.flag_LNOT;
             break;
+        }
 
         default:
             throw IllegalInstruction(); // to handle opcodes from 21 to 31
