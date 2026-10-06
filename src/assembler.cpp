@@ -168,6 +168,9 @@ vector<string> assemble(const string& src,vector<string>& errors){
         else if (mnemonic == "b") inst.op = static_cast<Opcode>(18); 
         else if (mnemonic == "call") inst.op = static_cast<Opcode>(19);
         else if (mnemonic == "ret") inst.op = static_cast<Opcode>(20);
+        else if (mnemonic == "land") inst.op = static_cast<Opcode>(21);
+        else if (mnemonic == "lor") inst.op = static_cast<Opcode>(22);
+        else if (mnemonic == "lnot") inst.op = static_cast<Opcode>(23);
         else{
             errors.push_back("Line"+std::to_string(lNum)+":Unknown Operation"+mnemonic+"'");
             currAddr+=4;
@@ -240,6 +243,17 @@ vector<string> assemble(const string& src,vector<string>& errors){
             }
             inst.isImm=true;
         }
+
+        else if(currOp >= 21 && currOp <= 23){
+            if(ops.size() >= 2) {
+                inst.rd = parseRegister(ops[0], lNum, errors);
+                inst.rs1 = parseRegister(ops[1], lNum, errors);
+            } else {
+                errors.push_back("Line " + std::to_string(lNum) + ": missing operands for land/lor/lnot");
+            }
+            inst.isImm = false; 
+        }
+        
         uint32_t encodedInst = encode(inst);
         std::stringstream hexStream;
         hexStream << std::setfill('0') << std::setw(8) << std::hex << encodedInst;
