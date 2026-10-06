@@ -12,7 +12,7 @@ CPU::CPU(){
     dataMem.resize(cap_of_data_mem,0);
     reset();
 }
-
+ 
 void CPU::reset(){
     pc = 0;
     regs.fill(0);
@@ -44,7 +44,17 @@ uint32_t CPU::fetchInst(){
 }
 
 void CPU::run(){
-    while (pc < instruction_limit) step();
+    if(breakpoints.count(pc))
+    {
+        step();
+    }
+    while (pc < instruction_limit) {
+        if(breakpoints.count(pc)) {
+            cout<<"Breakpoint at PC: 0x"<<std::setfill('0')<<std::hex<<pc<<std::dec<<"\n";
+            return; //pauses the execution and returns to CLI
+        }
+        step();
+    }
     cout << "Execution stopped.\n";
 }
 
@@ -202,4 +212,30 @@ void CPU::printStack() const{
         if(addr==0) break;
     }
     cout<<std::dec<<"------------------------\n";
+}
+
+void CPU::toggleBreakpoint(uint32_t addr) {
+    if(breakpoints.count(addr)) {
+        breakpoints.erase(addr);
+        cout<<"Breakpoint removed at 0x"<<std::setfill('0')<<std::setw(8)<<std::hex<<addr<<std::dec<<"\n";
+    } else {
+        breakpoints.insert(addr);
+        cout<<"Breakpoint set at 0x"<<std::setfill('0')<<std::setw(8)<<std::hex<<addr<<std::dec<<"\n";
+    }
+}
+
+void CPU::printMemory(uint32_t addr, int words) const {
+    cout<<"\n--- Memory View ---\n";
+    for(int i=0;i<words;i++) {
+        uint32_t curr_addr =addr + i*4;
+
+        if(curr_addr+3>=cap_of_data_mem) {
+            cout<<"0x"<<std::setfill('0')<<std::setw(8)<<std::hex<<curr_addr<<" : Out of Bounds\n";
+            break;
+        }
+
+        uint32_t word = dataMem[curr_addr] | (dataMem[curr_addr+1]<<8) | (dataMem[curr_addr+2]<<16) | (dataMem[curr_addr+3]<<24);
+        cout << "0x" << std::setfill('0') << std::setw(8) << std::hex << curr_addr << " : 0x" << std::setfill('0') << std::setw(8) << std::hex << word << "\n";
+    }
+    cout<<std::dec<<"------------------------------\n";
 }
