@@ -19,7 +19,7 @@ uint32_t encode(Instruction inst){
     uint32_t word=0;
     word=word|( (static_cast<uint32_t>(inst.op)&0x1F) <<27 );
     
-    bool isBranch= (inst.op==Opcode::nop || inst.op==Opcode::ret ||inst.op==Opcode::call ||inst.op==Opcode::b ||inst.op==Opcode::beq ||inst.op==Opcode::bgt);
+    bool isBranch= (inst.op==Opcode::nop || inst.op==Opcode::ret ||inst.op==Opcode::call ||inst.op==Opcode::b ||inst.op==Opcode::beq ||inst.op==Opcode::bgt||inst.op==Opcode::bland || inst.op==Opcode::blor || inst.op==Opcode::blnot);
     
     if(isBranch){
         uint32_t offset=static_cast<uint32_t>(inst.imm) & 0x7FFFFFF;
@@ -45,7 +45,7 @@ Instruction decode(uint32_t word){
     Instruction inst;
     inst.op=static_cast<Opcode>((word>>27)& 0x1F);
 
-    bool isBranch= (inst.op==Opcode::nop|| inst.op==Opcode::ret ||inst.op==Opcode::call ||inst.op==Opcode::b ||inst.op==Opcode::beq ||inst.op==Opcode::bgt);
+    bool isBranch= (inst.op==Opcode::nop|| inst.op==Opcode::ret ||inst.op==Opcode::call ||inst.op==Opcode::b ||inst.op==Opcode::beq ||inst.op==Opcode::bgt||inst.op==Opcode::bland || inst.op==Opcode::blor || inst.op==Opcode::blnot);
 
     if(isBranch){
         inst.isImm=false;

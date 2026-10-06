@@ -232,6 +232,12 @@ vector<string> assemble(const string &src, vector<string> &errors)
             inst.op = static_cast<Opcode>(22);
         else if (mnemonic == "lnot")
             inst.op = static_cast<Opcode>(23);
+        else if (mnemonic == "bland")
+            inst.op = static_cast<Opcode>(24);
+        else if (mnemonic == "blor")
+            inst.op = static_cast<Opcode>(25);
+        else if (mnemonic == "blnot")
+            inst.op = static_cast<Opcode>(26);
         else
         {
             errors.push_back("Line" + std::to_string(lNum) + ":Unknown Operation" + mnemonic + "'");
@@ -304,7 +310,7 @@ vector<string> assemble(const string &src, vector<string> &errors)
             }
         }
 
-        else if (currOp >= 16 && currOp <= 19)
+        else if ((currOp >= 16 && currOp <= 19 )||(currOp>=24 && currOp<=26))
         {
             std::string target = ops[0];
             if (symbolTable.count(target))
