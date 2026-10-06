@@ -52,13 +52,13 @@ string expandMacros(const string &src, vector<string> &errors)
             {
                 if(lowinst=="push")
                 {
-                    expandedsrc+="  sub sp,sp,4\n";
-                    expandedsrc+="  st " + reg + ", 0(sp)\n";
+                    expandedsrc+="\tsub sp,sp,4\n";
+                    expandedsrc+="\tst " + reg + ", 0[sp]\n";
                 }
                 else if(lowinst=="pop")
                 {
-                    expandedsrc+="  ld "+reg+", 0(sp)\n";
-                    expandedsrc+="  add sp,sp,4\n";
+                    expandedsrc+="\tld "+reg+", 0[sp]\n";
+                    expandedsrc+="\tadd sp,sp,4\n";
                 }
             }
         }

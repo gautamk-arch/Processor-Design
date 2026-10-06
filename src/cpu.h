@@ -7,12 +7,13 @@
 #include <vector>
 #include <array>
 #include <string>
+#include <unordered_set>
 const int no_of_reg = 16;
 const int cap_of_inst_mem = 1024;
 const int cap_of_data_mem = 4096;
 const int sp = 14;
 const int ra = 15;
-
+ 
 const int32_t stack_base=cap_of_data_mem;
 const int32_t stack_limit=cap_of_data_mem-1024;
 class CPU
@@ -29,6 +30,8 @@ private:
 
     std::vector<uint32_t> instMem;
     std::vector<uint8_t> dataMem;
+
+    std::unordered_set<uint32_t> breakpoints;
 
     uint32_t instruction_limit;
 
@@ -47,4 +50,6 @@ public:
     void dumpRegisters() const;
 
     void printStack() const; //ASCII stack visualizer
+    void toggleBreakpoint(uint32_t addr);
+    void printMemory(uint32_t addr,int words) const;
 };
