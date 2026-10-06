@@ -222,7 +222,7 @@ void CPU::dumpRegisters() const{
     cout << "--- CPU STATE ---\n";
 
     cout << "PC : 0x" << std::setfill('0') << std::setw(8) << std::hex << pc << "\n";
-    cout << "CMP : E=" << flag_E << " GT=" << flag_GT << "\n\n";
+    cout << "CMP : E=" << flag_E << " GT=" << flag_GT << " LAND=" << flag_land << " LOR=" << flag_lor << " LNOT=" << flag_lnot << "\n\n";
 
     for(int i=0; i<16; ++i){
         cout << "r" << std::dec << std::setw(2) << std::setfill(' ') << i << ": 0x" << std::setfill('0') << std::hex << std::setw(8) << regs[i] << "\t";

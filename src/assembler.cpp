@@ -315,7 +315,7 @@ vector<string> assemble(const string &src, vector<string> &errors)
             std::string target = ops[0];
             if (symbolTable.count(target))
             {
-                inst.imm = (symbolTable[target] - currAddr) / 4;
+                inst.imm = static_cast<int32_t>(symbolTable[target] - currAddr) / 4;
             }
             else
             {
@@ -335,8 +335,9 @@ vector<string> assemble(const string &src, vector<string> &errors)
         {
             if (ops.size() >= 2)
             {
-                inst.rd = parseRegister(ops[0], lNum, errors);
-                inst.rs1 = parseRegister(ops[1], lNum, errors);
+                inst.rd = 0; // Unused since these only set flags
+                inst.rs1 = parseRegister(ops[0], lNum, errors);
+                inst.rs2 = parseRegister(ops[1], lNum, errors);
             }
             else
             {
