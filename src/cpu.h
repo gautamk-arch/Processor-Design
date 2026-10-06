@@ -1,6 +1,7 @@
 #pragma once
 #include "isa.h"
 #include "exceptions.h"
+#include "alu.h"
 #include <cstdint>
 #include <iostream>
 #include <vector>
@@ -17,10 +18,14 @@ const int32_t stack_limit=cap_of_data_mem-1024;
 class CPU
 {
 private:
+    ALU alu;
     uint32_t pc;
     std::array<int32_t, no_of_reg> regs;
     bool flag_E;
     bool flag_GT;
+    bool flag_land;
+    bool flag_lor;
+    bool flag_lnot;
 
     std::vector<uint32_t> instMem;
     std::vector<uint8_t> dataMem;
