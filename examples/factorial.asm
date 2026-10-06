@@ -5,10 +5,10 @@ b .end
 
 .factorial:
     cmp r0, 1
-    beq .return1
+    beq .foo1
     bgt .continue
     cmp r0, 0
-    beq return1
+    beq .foo1
     b .returnE
 
 .continue:
@@ -21,7 +21,7 @@ b .end
     mul r1, r0, r1
     ret
 
-.return1:
+.foo1:
     mov r1, 1
     ret
 

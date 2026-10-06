@@ -1,5 +1,5 @@
 mov r1,5
-mov r2,2
+mov r2,6
 mov r3,3
 mov r4,4
 cmp r1,r3
