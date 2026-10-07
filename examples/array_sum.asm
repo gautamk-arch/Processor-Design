@@ -1,3 +1,5 @@
+@ adds the value in r1, r2, r3, r4
+@ expected result = 60(for this case) stored in r8
     mov r1, 0
     mov r2, 10
     mov r3, 20
@@ -13,4 +15,3 @@
 
     add r8, r5, r6
     add r8, r8, r7
-    
