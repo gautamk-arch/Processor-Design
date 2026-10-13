@@ -3,10 +3,12 @@
 #include <sstream>
 #include <vector>
 #include <string>
+#include <chrono>
 #include "assembler.h"
 #include "disassembler.h"
 #include "preprocessor.h"
 #include "cpu.h"
+#include "pipeline.h"
 
 using namespace std;
 
@@ -16,18 +18,29 @@ int main(int argc, char *argv[])
     // Arguments parsing
     if (argc < 2)
     {
-        std::cerr << "Usage: " << argv[0] << " [-d|--debug] <filename.asm>\n";
+        std::cerr << "Usage: " << argv[0] << " [-d|--debug] [--pipe] [--micro] <filename.asm>\n";
         return 1;
     }
 
     string asmFileName = "";
     bool use_debugger = false;
+    bool use_pipe = false;
+    bool use_micro = false;
+
     for (int i = 1; i < argc; i++)
     {
         string arg = argv[i];
         if (arg == "-d" || arg == "--debug")
         {
             use_debugger = true;
+        }
+        else if (arg == "--pipe")
+        {
+            use_pipe = true;
+        }
+        else if (arg == "--micro")
+        {
+            use_micro = true;
         }
         else
         {
@@ -37,6 +50,12 @@ int main(int argc, char *argv[])
     if (asmFileName.empty())
     {
         std::cerr << "Error: No input file specified.\n";
+        return 1;
+    }
+
+    if (use_pipe && use_micro)
+    {
+        std::cerr << "Error: Cannot use both --pipe and --micro simultaneously.\n";
         return 1;
     }
 
@@ -88,9 +107,34 @@ int main(int argc, char *argv[])
     disFile.close();
     cout << "Successfully disassembled to " << name_of_file << ".dis\n";
 
-    // Executing in CPU
+    // Architecture Configuration
     CPU cpu;
+    PipelinedCore<4> pipe;
+    PipelinedCore<4> *activeCore = nullptr;
+
+    if (use_micro)
+    {
+        cout << "\n[Mode: Horizontal Microprogrammed Pipelined CPU]\n";
+        pipe.isMicroprogrammed = true;
+        activeCore = &pipe;
+    }
+    else if (use_pipe)
+    {
+        cout << "\n[Mode: Hardwired 4-Stage Pipelined CPU]\n";
+        pipe.isMicroprogrammed = false;
+        activeCore = &pipe;
+    }
+    else
+    {
+        cout << "\n[Mode: Single-Cycle Hardwired CPU]\n";
+    }
+
+    // Load initial memory state into the base CPU
     cpu.loadHex(assembled_code);
+    if (activeCore)
+        activeCore->reset();
+
+    // Unified Execution and Debugger Loop
     if (use_debugger)
     {
         cout << "--- Starting Debugger ---\n";
@@ -115,7 +159,16 @@ int main(int argc, char *argv[])
                 }
                 else if (cmd == "run")
                 {
-                    cpu.run();
+                    auto start_time = std::chrono::high_resolution_clock::now();
+
+                    if (activeCore)
+                        activeCore->run(cpu);
+                    else
+                        cpu.run();
+
+                    auto end_time = std::chrono::high_resolution_clock::now();
+                    std::chrono::duration<double, std::milli> elapsed = end_time - start_time;
+                    cout << "[Run command completed in " << elapsed.count() << " ms]\n";
                 }
                 else if (cmd == "step")
                 {
@@ -126,7 +179,10 @@ int main(int argc, char *argv[])
 
                     for (int i = 0; i < steps; i++)
                     {
-                        cpu.step();
+                        if (activeCore)
+                            activeCore->step(cpu);
+                        else
+                            cpu.step();
                     }
                 }
                 else if (cmd == "regs")
@@ -140,6 +196,8 @@ int main(int argc, char *argv[])
                 else if (cmd == "reset")
                 {
                     cpu.reset();
+                    if (activeCore)
+                        activeCore->reset();
                     cpu.loadHex(assembled_code);
                     cout << "CPU reset and program reloaded\n";
                 }
@@ -186,9 +244,28 @@ int main(int argc, char *argv[])
                         cout << "Usage: break <addr>\n";
                     }
                 }
-                else if (cmd == "pipe" || cmd == "micro")
+                else if (cmd == "pipe")
                 {
-                    cout << "Command '" << cmd << "' is not yet implemented.\n";
+                    if (activeCore)
+                    {
+                        activeCore->printPipelineDiagram();
+                    }
+                    else
+                    {
+                        cout << "Pipeline state is not available in Single-Cycle mode.\n";
+                    }
+                }
+                else if (cmd == "micro")
+                {
+                    if (activeCore && activeCore->isMicroprogrammed)
+                    {
+                        cout << "Micro-PC: " << activeCore->currentMicroPC << "\n";
+                        cout << "Micro-Sequencer Busy: " << (activeCore->isMicroSequencerBusy ? "True" : "False") << "\n";
+                    }
+                    else
+                    {
+                        cout << "Microarchitectural state is only available in --micro mode.\n";
+                    }
                 }
                 else if (cmd == "help")
                 {
@@ -215,14 +292,27 @@ int main(int argc, char *argv[])
             }
         }
     }
-    else {
+    else
+    {
         cout << "--- Starting Execution ---\n";
-        try {
-            cpu.run();
-            cout << "--- Execution completed successfully ---\n";
-        } catch(const exception& e) {
+        try
+        {
+            auto start_time = chrono::high_resolution_clock::now();
+
+            if (activeCore)
+                activeCore->run(cpu);
+            else
+                cpu.run();
+
+            auto end_time = std::chrono::high_resolution_clock::now();
+            std::chrono::duration<double, std::milli> elapsed = end_time - start_time;
+
+            cout << "--- Execution completed successfully in " << elapsed.count() << " ms ---\n";
+        }
+        catch (const exception &e)
+        {
             cerr << "CPU runtime error: " << e.what() << "\n";
-        }   
+        }
         cout << "\n";
         cpu.dumpRegisters();
     }
