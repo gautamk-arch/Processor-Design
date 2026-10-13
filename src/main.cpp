@@ -3,6 +3,7 @@
 #include <sstream>
 #include <vector>
 #include <string>
+#include <chrono>
 #include "assembler.h"
 #include "disassembler.h"
 #include "preprocessor.h"
@@ -33,11 +34,11 @@ int main(int argc, char *argv[])
         {
             use_debugger = true;
         }
-        else if (arg == "--pipe") 
+        else if (arg == "--pipe")
         {
             use_pipe = true;
         }
-        else if (arg == "--micro") 
+        else if (arg == "--micro")
         {
             use_micro = true;
         }
@@ -52,7 +53,8 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    if (use_pipe && use_micro) {
+    if (use_pipe && use_micro)
+    {
         std::cerr << "Error: Cannot use both --pipe and --micro simultaneously.\n";
         return 1;
     }
@@ -108,23 +110,29 @@ int main(int argc, char *argv[])
     // Architecture Configuration
     CPU cpu;
     PipelinedCore<4> pipe;
-    PipelinedCore<4>* activeCore = nullptr;
+    PipelinedCore<4> *activeCore = nullptr;
 
-    if (use_micro) {
+    if (use_micro)
+    {
         cout << "\n[Mode: Horizontal Microprogrammed Pipelined CPU]\n";
         pipe.isMicroprogrammed = true;
         activeCore = &pipe;
-    } else if (use_pipe) {
+    }
+    else if (use_pipe)
+    {
         cout << "\n[Mode: Hardwired 4-Stage Pipelined CPU]\n";
         pipe.isMicroprogrammed = false;
         activeCore = &pipe;
-    } else {
+    }
+    else
+    {
         cout << "\n[Mode: Single-Cycle Hardwired CPU]\n";
     }
 
     // Load initial memory state into the base CPU
     cpu.loadHex(assembled_code);
-    if (activeCore) activeCore->reset();
+    if (activeCore)
+        activeCore->reset();
 
     // Unified Execution and Debugger Loop
     if (use_debugger)
@@ -151,8 +159,16 @@ int main(int argc, char *argv[])
                 }
                 else if (cmd == "run")
                 {
-                    if (activeCore) activeCore->run(cpu);
-                    else cpu.run();
+                    auto start_time = std::chrono::high_resolution_clock::now();
+
+                    if (activeCore)
+                        activeCore->run(cpu);
+                    else
+                        cpu.run();
+
+                    auto end_time = std::chrono::high_resolution_clock::now();
+                    std::chrono::duration<double, std::milli> elapsed = end_time - start_time;
+                    cout << "[Run command completed in " << elapsed.count() << " ms]\n";
                 }
                 else if (cmd == "step")
                 {
@@ -163,8 +179,10 @@ int main(int argc, char *argv[])
 
                     for (int i = 0; i < steps; i++)
                     {
-                        if (activeCore) activeCore->step(cpu);
-                        else cpu.step();
+                        if (activeCore)
+                            activeCore->step(cpu);
+                        else
+                            cpu.step();
                     }
                 }
                 else if (cmd == "regs")
@@ -178,7 +196,8 @@ int main(int argc, char *argv[])
                 else if (cmd == "reset")
                 {
                     cpu.reset();
-                    if (activeCore) activeCore->reset();
+                    if (activeCore)
+                        activeCore->reset();
                     cpu.loadHex(assembled_code);
                     cout << "CPU reset and program reloaded\n";
                 }
@@ -227,18 +246,24 @@ int main(int argc, char *argv[])
                 }
                 else if (cmd == "pipe")
                 {
-                    if (activeCore) {
+                    if (activeCore)
+                    {
                         activeCore->printPipelineDiagram();
-                    } else {
+                    }
+                    else
+                    {
                         cout << "Pipeline state is not available in Single-Cycle mode.\n";
                     }
                 }
                 else if (cmd == "micro")
                 {
-                    if (activeCore && activeCore->isMicroprogrammed) {
+                    if (activeCore && activeCore->isMicroprogrammed)
+                    {
                         cout << "Micro-PC: " << activeCore->currentMicroPC << "\n";
                         cout << "Micro-Sequencer Busy: " << (activeCore->isMicroSequencerBusy ? "True" : "False") << "\n";
-                    } else {
+                    }
+                    else
+                    {
                         cout << "Microarchitectural state is only available in --micro mode.\n";
                     }
                 }
@@ -267,14 +292,27 @@ int main(int argc, char *argv[])
             }
         }
     }
-    else {
+    else
+    {
         cout << "--- Starting Execution ---\n";
-        try {
-            cpu.run();
-            cout << "--- Execution completed successfully ---\n";
-        } catch(const exception& e) {
+        try
+        {
+            auto start_time = chrono::high_resolution_clock::now();
+
+            if (activeCore)
+                activeCore->run(cpu);
+            else
+                cpu.run();
+
+            auto end_time = std::chrono::high_resolution_clock::now();
+            std::chrono::duration<double, std::milli> elapsed = end_time - start_time;
+
+            cout << "--- Execution completed successfully in " << elapsed.count() << " ms ---\n";
+        }
+        catch (const exception &e)
+        {
             cerr << "CPU runtime error: " << e.what() << "\n";
-        }   
+        }
         cout << "\n";
         cpu.dumpRegisters();
     }
