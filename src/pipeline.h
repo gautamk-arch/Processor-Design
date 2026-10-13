@@ -2,6 +2,7 @@
 #include <cstdint>
 #include "isa.h"
 #include "cpu.h"
+#include "microprogramming.h"
 
 template <size_t N>
 struct PipelinedCore
@@ -15,8 +16,14 @@ struct PipelinedCore
         uint32_t b = 0;
         uint32_t storeVal = 0;
         uint32_t result = 0;
+        MicroInstruction uInst;
     };
     Slot stage[N];
+    Microprogramming microROM;
+    size_t currentMicroPC = 0;
+    bool isMicroSequencerBusy = false;
+    bool isMicroprogrammed = false;
+
     int readStage;
     int exStage;
     int memStage;
@@ -27,7 +34,8 @@ struct PipelinedCore
     uint32_t stall_count = 0;
     uint32_t flush_count = 0;
 
-    PipelinedCore() {
+    PipelinedCore()
+    {
         configure4stage();
     }
     void reset()
