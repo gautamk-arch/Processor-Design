@@ -18,6 +18,7 @@ const int32_t stack_base=cap_of_data_mem;
 const int32_t stack_limit=cap_of_data_mem-1024;
 class CPU
 {
+    template<size_t N> friend struct PipelinedCore;
 private:
     ALU alu;
     uint32_t pc;
