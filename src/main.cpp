@@ -53,12 +53,6 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    if (use_pipe && use_micro)
-    {
-        std::cerr << "Error: Cannot use both --pipe and --micro simultaneously.\n";
-        return 1;
-    }
-
     // Reading source asm file
     ifstream asmFile(asmFileName);
     if (!asmFile.is_open())
@@ -112,18 +106,26 @@ int main(int argc, char *argv[])
     PipelinedCore<4> pipe;
     PipelinedCore<4> *activeCore = nullptr;
 
+    // Mode 3: Pipeline WITH Microprogramming 
+    // (Triggers if the user runs: ./simulator --micro OR ./simulator --pipe --micro)
     if (use_micro)
     {
         cout << "\n[Mode: Horizontal Microprogrammed Pipelined CPU]\n";
         pipe.isMicroprogrammed = true;
         activeCore = &pipe;
     }
+
+    // Mode 2: Pipeline WITHOUT Microprogramming 
+    // (Triggers if the user runs: ./simulator --pipe)
     else if (use_pipe)
     {
         cout << "\n[Mode: Hardwired 4-Stage Pipelined CPU]\n";
         pipe.isMicroprogrammed = false;
         activeCore = &pipe;
     }
+
+    // Mode 1: Hardwired Single-Cycle CPU 
+    // (Triggers if no flags are provided: ./simulator)
     else
     {
         cout << "\n[Mode: Single-Cycle Hardwired CPU]\n";
