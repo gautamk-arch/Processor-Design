@@ -179,7 +179,7 @@ void PipelinedCore<N>::step(CPU &cpu)
                 continue;
             }
 
-            // EX stage 
+            // EX stage
 
             if (currentStageNum == exStage && stage[i].valid)
             {
@@ -194,7 +194,7 @@ void PipelinedCore<N>::step(CPU &cpu)
                     const bool anyFlag = u.get(ControlBit::FLAG_E_EN) || u.get(ControlBit::FLAG_GT_EN) ||
                                          u.get(ControlBit::FLAG_LAND_EN) || u.get(ControlBit::FLAG_LOR_EN) ||
                                          u.get(ControlBit::FLAG_LNOT_EN);
-                    const aluop op = static_cast<aluop>(u.args);   // ALU function lives in args
+                    const aluop op = static_cast<aluop>(u.args); // ALU function lives in args
 
                     if (u.get(ControlBit::PC_WRITE))
                     {
@@ -222,9 +222,12 @@ void PipelinedCore<N>::step(CPU &cpu)
                             cpu.flag_E = res.flag_E;
                             cpu.flag_GT = res.flag_GT;
                         }
-                        if (u.get(ControlBit::FLAG_LAND_EN)) cpu.flag_land = res.flag_LAND;
-                        if (u.get(ControlBit::FLAG_LOR_EN)) cpu.flag_lor = res.flag_LOR;
-                        if (u.get(ControlBit::FLAG_LNOT_EN)) cpu.flag_lnot = res.flag_LNOT;
+                        if (u.get(ControlBit::FLAG_LAND_EN))
+                            cpu.flag_land = res.flag_LAND;
+                        if (u.get(ControlBit::FLAG_LOR_EN))
+                            cpu.flag_lor = res.flag_LOR;
+                        if (u.get(ControlBit::FLAG_LNOT_EN))
+                            cpu.flag_lnot = res.flag_LNOT;
                     }
                     else if (u.get(ControlBit::ALU_RESULT_WRITE))
                     {
@@ -391,22 +394,10 @@ void PipelinedCore<N>::step(CPU &cpu)
                     stage[i].storeVal = (inst.op == Opcode::st) ? cpu.regs[inst.rd] : 0;
                     if (isMicroprogrammed)
                     {
-                        if (!isMicroSequencerBusy)
-                        {
-                            currentMicroPC = microROM.entryFor(inst.op);
-                            isMicroSequencerBusy = true;
-                        }
-
-                        stage[i].uInst = microROM.fetch(currentMicroPC);
-
-                        if (stage[i].uInst.fetchSource() == FetchSource::NEXT_MICRO_PC)
-                        {
-                            currentMicroPC++;
-                        }
-                        else
-                        {
-                            isMicroSequencerBusy = false;
-                        }
+                        // One horizontal control word per ISA instruction.
+                        // Decode the opcode and fetch its control word directly.
+                        stage[i].uInst =
+                            microROM.fetch(microROM.entryFor(inst.op));
                     }
                 }
             }
@@ -414,18 +405,12 @@ void PipelinedCore<N>::step(CPU &cpu)
             if (i + 1 < static_cast<int>(N) && (!stall || currentStageNum > readStage))
             {
                 // Prevent IF stage from shifting into OF while the micro-sequencer is busy translating.
-                bool preventShift = (isMicroprogrammed && isMicroSequencerBusy && currentStageNum == 1);
-
-                if (!preventShift) 
+                // bool preventShift = (isMicroprogrammed && isMicroSequencerBusy && currentStageNum == 1);
+                bool preventShift = false;
+                if (!preventShift)
                 {
                     stage[i + 1] = stage[i];
-                    
-                    // Prevent OF stage from invalidating itself during multi-cycle routines.
-                    bool keepInOF = (isMicroprogrammed && isMicroSequencerBusy && currentStageNum == readStage);
-                    if (!keepInOF)
-                    {
-                        stage[i].valid = false;
-                    }
+                    stage[i].valid = false;
                 }
             }
 
