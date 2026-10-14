@@ -84,7 +84,7 @@ bool hasDataHazard(const typename PipelinedCore<N>::Slot *stage, int readStage, 
         break;
     }
 
-    for (int i = readStage; i < writeStage - 1; ++i)
+    for (int i = readStage; i < writeStage; ++i)
     {
         if (stage[i].valid)
         {
@@ -186,22 +186,50 @@ void PipelinedCore<N>::step(CPU &cpu)
 
                 if (isMicroprogrammed)
                 {
-                    MicroInstruction uInst = stage[i].uInst;
+                    const MicroInstruction &u = stage[i].uInst;
+                    const bool anyFlag = u.get(ControlBit::FLAG_E_EN) || u.get(ControlBit::FLAG_GT_EN) ||
+                                         u.get(ControlBit::FLAG_LAND_EN) || u.get(ControlBit::FLAG_LOR_EN) ||
+                                         u.get(ControlBit::FLAG_LNOT_EN);
+                    const aluop op = static_cast<aluop>(u.args);   // ALU function lives in args
 
-                    if (uInst.get(ControlBit::ALU_RESULT_WRITE))
+                    if (u.get(ControlBit::PC_WRITE))
                     {
-                        stage[i].result = cpu.alu.execute(static_cast<aluop>(uInst.args), A, B).val;
+                        // b / beq / bgt / bland / blor / blnot / call / ret.
+                        // A flag-enable bit next to PC_WRITE means "only if that flag is set".
+                        bool take = !anyFlag ||
+                                    (u.get(ControlBit::FLAG_E_EN) && cpu.flag_E) ||
+                                    (u.get(ControlBit::FLAG_GT_EN) && cpu.flag_GT) ||
+                                    (u.get(ControlBit::FLAG_LAND_EN) && cpu.flag_land) ||
+                                    (u.get(ControlBit::FLAG_LOR_EN) && cpu.flag_lor) ||
+                                    (u.get(ControlBit::FLAG_LNOT_EN) && cpu.flag_lnot);
+                        if (take)
+                        {
+                            // A_READ + PC_WRITE = pc <- A (ret); otherwise pc <- branch target
+                            cpu.pc = u.get(ControlBit::A_READ) ? stage[i].a : current_pc + (inst.imm << 2);
+                            branchTaken = true;
+                        }
                     }
-                    if (uInst.get(ControlBit::FLAG_E_EN) || uInst.get(ControlBit::FLAG_GT_EN))
+                    else if (anyFlag)
                     {
-                        aluResult res = cpu.alu.execute(aluop::CMP, A, B);
-                        cpu.flag_E = res.flag_E;
-                        cpu.flag_GT = res.flag_GT;
+                        // cmp / land / lor / lnot: only flags are written
+                        aluResult res = cpu.alu.execute(op, A, B);
+                        if (u.get(ControlBit::FLAG_E_EN) || u.get(ControlBit::FLAG_GT_EN))
+                        {
+                            cpu.flag_E = res.flag_E;
+                            cpu.flag_GT = res.flag_GT;
+                        }
+                        if (u.get(ControlBit::FLAG_LAND_EN)) cpu.flag_land = res.flag_LAND;
+                        if (u.get(ControlBit::FLAG_LOR_EN)) cpu.flag_lor = res.flag_LOR;
+                        if (u.get(ControlBit::FLAG_LNOT_EN)) cpu.flag_lnot = res.flag_LNOT;
                     }
-                    if (uInst.get(ControlBit::PC_WRITE))
+                    else if (u.get(ControlBit::ALU_RESULT_WRITE))
                     {
-                        cpu.pc = current_pc + (inst.imm << 2);
-                        branchTaken = true;
+                        // for st, operand B holds the value to store, so the address uses the immediate
+                        int32_t Bop = u.get(ControlBit::MAR_WRITE) ? static_cast<int32_t>(ImmValue(inst.mod, inst.imm)) : B;
+                        aluResult res = cpu.alu.execute(op, A, Bop);
+                        if (res.flag_ERR)
+                            throw DivideByZero();
+                        stage[i].result = res.val;
                     }
                 }
                 else

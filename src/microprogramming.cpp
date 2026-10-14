@@ -1,5 +1,6 @@
 #include "microprogramming.h"
 #include "exceptions.h"
+#include "alu.h"
 
 #include <algorithm>
 #include <limits>
@@ -70,22 +71,12 @@ Microprogramming::makeInstructionProgram(Opcode opcode) {
         case Opcode::lsr:   add("mlsr"); break;
         case Opcode::asr:   add("masr"); break;
         case Opcode::nop:   add("mnop"); break;
-        case Opcode::ld:
-            add("mcomputeAddress");
-            add("mreadMemory");
-            add("mwriteLoadedValue");
-            break;
-        case Opcode::st:
-            add("mcomputeAddress");
-            add("mwriteMemory");
-            break;
+        case Opcode::ld:    add("mload"); break;
+        case Opcode::st:    add("mstore"); break;
         case Opcode::beq:   add("mbranchEqual"); break;
         case Opcode::bgt:   add("mbranchGreater"); break;
         case Opcode::b:     add("mbranch"); break;
-        case Opcode::call:
-            add("msaveReturnAddress");
-            add("mbranch");
-            break;
+        case Opcode::call:  add("mcall"); break;
         case Opcode::ret:   add("mreturn"); break;
         case Opcode::land:  add("mland"); break;
         case Opcode::lor:   add("mlor"); break;
@@ -95,6 +86,91 @@ Microprogramming::makeInstructionProgram(Opcode opcode) {
         case Opcode::blnot: add("mbranchLnot"); break;
         default:
             throw std::invalid_argument("Unknown SimpleRisc opcode");
+    }
+
+    // ---- Control words for the pipelined core (ONE word per ISA instruction) ----
+    // The pipeline stages read these bits:
+    //   ALU_RESULT_WRITE : EX computes aluResult = ALU(args, A, B)
+    //   REG_DATA_WRITE   : MA/RW writes the result into rd
+    //   LD_RESULT_WRITE  : MA/RW loads memory[result]
+    //   MAR_WRITE        : MA/RW stores B to memory[result]   (EX uses imm as operand B)
+    //   PC_WRITE         : EX changes the PC (branch / call / ret)
+    //   A_READ + PC_WRITE: pc <- A   (ret)
+    //   FLAG_*_EN        : with PC_WRITE: branch only if that flag is set
+    //                      without PC_WRITE: update that flag (cmp / land / lor / lnot)
+    //   args             : ALU function, as an aluop value
+    auto wire = [&](std::size_t index,
+                    std::initializer_list<ControlBit> bits,
+                    std::uint16_t args = 0) {
+        MicroInstruction& m = code.at(index);
+        for (ControlBit bit : bits) m.set(bit);
+        m.args = args & ((1U << ARGS_BITS) - 1U);
+    };
+    const std::uint16_t aluFn = static_cast<std::uint16_t>(opcode);   // add..asr: ISA opcode == aluop
+
+    switch (opcode) {
+        case Opcode::add:
+        case Opcode::sub:
+        case Opcode::mul:
+        case Opcode::div:
+        case Opcode::mod:
+        case Opcode::and_op:
+        case Opcode::or_op:
+        case Opcode::not_op:
+        case Opcode::mov:
+        case Opcode::lsl:
+        case Opcode::lsr:
+        case Opcode::asr:
+            wire(0, {ControlBit::ALU_RESULT_WRITE, ControlBit::REG_DATA_WRITE}, aluFn);
+            break;
+        case Opcode::cmp:
+            wire(0, {ControlBit::FLAG_E_EN, ControlBit::FLAG_GT_EN}, static_cast<std::uint16_t>(aluop::CMP));
+            break;
+        case Opcode::nop:
+            break;
+        case Opcode::ld:
+            wire(0, {ControlBit::ALU_RESULT_WRITE, ControlBit::LD_RESULT_WRITE,
+                     ControlBit::REG_DATA_WRITE}, static_cast<std::uint16_t>(aluop::ADD));
+            break;
+        case Opcode::st:
+            wire(0, {ControlBit::ALU_RESULT_WRITE, ControlBit::MAR_WRITE, ControlBit::MDR_WRITE},
+                 static_cast<std::uint16_t>(aluop::ADD));
+            break;
+        case Opcode::b:
+            wire(0, {ControlBit::BRANCH_TARGET_EN, ControlBit::PC_WRITE});
+            break;
+        case Opcode::beq:
+            wire(0, {ControlBit::BRANCH_TARGET_EN, ControlBit::PC_WRITE, ControlBit::FLAG_E_EN});
+            break;
+        case Opcode::bgt:
+            wire(0, {ControlBit::BRANCH_TARGET_EN, ControlBit::PC_WRITE, ControlBit::FLAG_GT_EN});
+            break;
+        case Opcode::bland:
+            wire(0, {ControlBit::BRANCH_TARGET_EN, ControlBit::PC_WRITE, ControlBit::FLAG_LAND_EN});
+            break;
+        case Opcode::blor:
+            wire(0, {ControlBit::BRANCH_TARGET_EN, ControlBit::PC_WRITE, ControlBit::FLAG_LOR_EN});
+            break;
+        case Opcode::blnot:
+            wire(0, {ControlBit::BRANCH_TARGET_EN, ControlBit::PC_WRITE, ControlBit::FLAG_LNOT_EN});
+            break;
+        case Opcode::call:
+            wire(0, {ControlBit::PC_READ, ControlBit::BRANCH_TARGET_EN, ControlBit::PC_WRITE});
+            break;
+        case Opcode::ret:
+            wire(0, {ControlBit::A_READ, ControlBit::PC_WRITE});
+            break;
+        case Opcode::land:
+            wire(0, {ControlBit::FLAG_LAND_EN}, static_cast<std::uint16_t>(aluop::LAND));
+            break;
+        case Opcode::lor:
+            wire(0, {ControlBit::FLAG_LOR_EN}, static_cast<std::uint16_t>(aluop::LOR));
+            break;
+        case Opcode::lnot:
+            wire(0, {ControlBit::FLAG_LNOT_EN}, static_cast<std::uint16_t>(aluop::LNOT));
+            break;
+        default:
+            break;
     }
 
     // Last microinstruction returns to the next ISA instruction's fetch entry.
@@ -114,6 +190,22 @@ void Microprogramming::build() {
     rom_.push_back(make("mdecode"));
     rom_.push_back(make("mswitch", FetchSource::OPCODE_SWITCH));
     const std::size_t dispatchAddress = 2;
+
+    // mloadIR: IR <- instruction memory[PC]
+    rom_[0].set(ControlBit::PC_READ);
+    rom_[0].set(ControlBit::IR_EN);
+    // mdecode: extract fields, read register file, latch A and B,
+    // sign-extend immediate and compute branch target
+    rom_[1].set(ControlBit::RS1_EN);
+    rom_[1].set(ControlBit::RS2_EN);
+    rom_[1].set(ControlBit::RD_EN);
+    rom_[1].set(ControlBit::I_EN);
+    rom_[1].set(ControlBit::IMMX_EN);
+    rom_[1].set(ControlBit::BRANCH_TARGET_EN);
+    rom_[1].set(ControlBit::REG_SRC_READ);
+    rom_[1].set(ControlBit::REG_DATA_READ);
+    rom_[1].set(ControlBit::A_WRITE);
+    rom_[1].set(ControlBit::B_WRITE);
 
     for (std::size_t raw = 0; raw < programs_.size(); ++raw) {
         const Opcode opcode = static_cast<Opcode>(raw);
