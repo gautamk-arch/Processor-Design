@@ -1,7 +1,7 @@
 #include <cstdint>
 #include "alu.h"
 // ---------------- primitive "gates" ----------------
-// XOR built only from AND / OR / NOT, as in the chapter's half adder.
+// XOR built only from AND / OR / NOT.
 static uint64_t xor_(uint64_t x, uint64_t y) { return (x & ~y) | (~x & y); } // built xor function for simplicity
 
 static uint64_t maskOf(int width)
@@ -113,7 +113,7 @@ static void nonrestoring_div(uint32_t dividend, uint32_t divisor, uint32_t &quot
         V |= (uint32_t)q;
     }
     if ((U >> 32) & 1)
-        U = cla_add(U, D, false, W).sum; // final correction
+        U = cla_add(U, D, false, W).sum;
     quot = V;
     rem = (uint32_t)U;
 }
