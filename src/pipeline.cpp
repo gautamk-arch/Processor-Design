@@ -128,6 +128,8 @@ void PipelinedCore<N>::step(CPU &cpu)
         {
             int currentStageNum = i + 1;
 
+            // MA / RW stage
+
             if (currentStageNum == memStage && stage[i].valid)
             {
                 Instruction inst = stage[i].inst;
@@ -147,7 +149,7 @@ void PipelinedCore<N>::step(CPU &cpu)
                     cpu.checkMemoryAccess(addr);
                     if (inst.rs1 == sp && static_cast<int32_t>(addr) < stack_limit)
                         throw StackOverflow();
-                    uint32_t val = stage[i].b;
+                    uint32_t val = stage[i].storeVal;
                     cpu.dataMem[addr] = val & 0xFF;
                     cpu.dataMem[addr + 1] = (val >> 8) & 0xFF;
                     cpu.dataMem[addr + 2] = (val >> 16) & 0xFF;
@@ -176,6 +178,8 @@ void PipelinedCore<N>::step(CPU &cpu)
                 stage[i].valid = false;
                 continue;
             }
+
+            // EX stage 
 
             if (currentStageNum == exStage && stage[i].valid)
             {
@@ -370,6 +374,8 @@ void PipelinedCore<N>::step(CPU &cpu)
                 }
             }
 
+            // OF stage
+
             if (currentStageNum == readStage)
             {
                 if (hasDataHazard<N>(stage, readStage, writeStage))
@@ -381,7 +387,7 @@ void PipelinedCore<N>::step(CPU &cpu)
                 {
                     Instruction inst = stage[i].inst;
                     stage[i].a = (inst.op == Opcode::ret) ? cpu.regs[ra] : cpu.regs[inst.rs1];
-                    stage[i].b = (inst.op == Opcode::st) ? cpu.regs[inst.rd] : (inst.isImm ? ImmValue(inst.mod, inst.imm) : cpu.regs[inst.rs2]);
+                    stage[i].b = inst.isImm ? ImmValue(inst.mod, inst.imm) : cpu.regs[inst.rs2];
                     stage[i].storeVal = (inst.op == Opcode::st) ? cpu.regs[inst.rd] : 0;
                     if (isMicroprogrammed)
                     {
@@ -407,14 +413,29 @@ void PipelinedCore<N>::step(CPU &cpu)
 
             if (i + 1 < static_cast<int>(N) && (!stall || currentStageNum > readStage))
             {
-                stage[i + 1] = stage[i];
-                stage[i].valid = false;
+                // Prevent IF stage from shifting into OF while the micro-sequencer is busy translating.
+                bool preventShift = (isMicroprogrammed && isMicroSequencerBusy && currentStageNum == 1);
+
+                if (!preventShift) 
+                {
+                    stage[i + 1] = stage[i];
+                    
+                    // Prevent OF stage from invalidating itself during multi-cycle routines.
+                    bool keepInOF = (isMicroprogrammed && isMicroSequencerBusy && currentStageNum == readStage);
+                    if (!keepInOF)
+                    {
+                        stage[i].valid = false;
+                    }
+                }
             }
+
+            // IF stage
 
             if (currentStageNum == 1 && !stall)
             {
                 if (isMicroprogrammed && isMicroSequencerBusy)
                 {
+                    // Natural stall holding the IF stage state
                 }
                 else
                 {
