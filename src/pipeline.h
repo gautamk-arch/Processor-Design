@@ -21,7 +21,6 @@ struct PipelinedCore
     Slot stage[N];
     Microprogramming microROM;
     size_t currentMicroPC = 0;
-    bool isMicroSequencerBusy = false;
     bool isMicroprogrammed = false;
 
     int readStage;

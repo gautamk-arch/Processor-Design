@@ -1,6 +1,6 @@
 @ r0 contains input number
 @ result is calculated and stored in r1 (-1 if input is negative)
-mov r0, 10
+mov r0, 6
 mov r1, 1
 call .factorial
 b .end
