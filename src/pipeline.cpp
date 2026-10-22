@@ -8,7 +8,7 @@ static const char *opNames[] = {
     "add", "sub", "mul", "div", "mod", "cmp", "and", "or", "not", "mov", "lsl", "lsr", "asr",
     "nop", "ld", "st", "beq", "bgt", "b", "call", "ret", "land", "lor", "lnot", "bland", "blor", "blnot"};
 
-bool writesRegister(const Instruction &inst, int reg)
+bool writesRegister(const Instruction &inst, int reg)   // Checks whether the given instruction writes into the register
 {
     if (reg < 0)
         return false;
@@ -35,16 +35,9 @@ bool writesRegister(const Instruction &inst, int reg)
     }
 }
 
-template <size_t N>
-bool hasDataHazard(const typename PipelinedCore<N>::Slot *stage, int readStage, int writeStage)
+static void getSources(const Instruction &inst, int &srcA, int &srcB, int &srcStore)    // finds the source register for instructions. Prevents unnecessary stalls, false hazards and wrong forwarding.
 {
-    int readIdx = readStage - 1;
-    if (!stage[readIdx].valid)
-        return false;
-
-    const Instruction &inst = stage[readIdx].inst;
-    int r1 = -1, r2 = -1;
-
+    srcA = srcB = srcStore = -1;    // srcA = rs1, srcB = rs2 (if used), srcStore = register that contains value to be stored in case of store operation i.e rd
     switch (inst.op)
     {
     case Opcode::add:
@@ -60,44 +53,54 @@ bool hasDataHazard(const typename PipelinedCore<N>::Slot *stage, int readStage, 
     case Opcode::asr:
     case Opcode::land:
     case Opcode::lor:
-        r1 = inst.rs1;
+        srcA = inst.rs1;
         if (!inst.isImm)
-            r2 = inst.rs2;
+            srcB = inst.rs2;
         break;
     case Opcode::lnot:
     case Opcode::ld:
-        r1 = inst.rs1;
+        srcA = inst.rs1;
         break;
     case Opcode::not_op:
     case Opcode::mov:
         if (!inst.isImm)
-            r2 = inst.rs2;
+            srcB = inst.rs2;
         break;
     case Opcode::st:
-        r1 = inst.rs1;
-        r2 = inst.rd;
+        srcA = inst.rs1;
+        srcStore = inst.rd;
         break;
     case Opcode::ret:
-        r1 = ra;
+        srcA = ra;
         break;
     default:
         break;
     }
+}
 
-    for (int i = readStage; i < writeStage; ++i)
+template <size_t N>
+bool hasDataHazard(const typename PipelinedCore<N>::Slot *stage, int readStage, int writeStage)
+{
+    int readIdx = readStage - 1;
+    if (!stage[readIdx].valid)
+        return false;
+
+    int srcA, srcB, srcStore;
+    getSources(stage[readIdx].inst, srcA, srcB, srcStore);
+
+    // Stalling if immediately previous instruction was Load.
+    int exIdx = writeStage - 1; // stage[3], which just completed the EX stage
+    if (stage[exIdx].valid && stage[exIdx].inst.op == Opcode::ld)
     {
-        if (stage[i].valid)
-        {
-            if ((r1 != -1 && writesRegister(stage[i].inst, r1)) ||
-                (r2 != -1 && writesRegister(stage[i].inst, r2)))
-                return true;
-        }
+        int ldDest = stage[exIdx].inst.rd;
+        if((srcA != -1 && srcA == ldDest) || (srcB != -1 && srcB == ldDest) || (srcStore != -1 && srcStore == ldDest)) return true; // 1 cycle stall
     }
+    // All other RAW hazards are successfully bypassed via the forwarding logic
     return false;
 }
 
 template <size_t N>
-bool PipelinedCore<N>::isDone(const CPU &cpu) const
+bool PipelinedCore<N>::isDone(const CPU &cpu) const // check if all instructions are executed
 {
     if (cpu.pc < cpu.instruction_limit)
         return false;
@@ -108,19 +111,30 @@ bool PipelinedCore<N>::isDone(const CPU &cpu) const
 }
 
 template <size_t N>
-void PipelinedCore<N>::run(CPU &cpu)
+void PipelinedCore<N>::run(CPU &cpu)    // run the program
 {
     while (!isDone(cpu))
         step(cpu);
-    cout << "Execution stopped.\n";
+
+        // To display total count of stalls, flushes and CPI
+        cout << "\nExecution stopped.\n";
+        cout << "--- Pipeline Execution Summary ---\n";
+        cout << "Total Cycles       : " << cycle_count << "\n";
+        cout << "Total Instructions : " << instruction_count << "\n";
+        cout << "Total Stalls       : " << stall_count << "\n";
+        cout << "Total Flushes      : " << flush_count << "\n";
+        
+        double cpi = (instruction_count > 0) ? static_cast<double>(cycle_count) / instruction_count : 0.0;
+        cout << "Final CPI          : " << std::fixed << std::setprecision(2) << cpi << "\n";
 }
 
 template <size_t N>
-void PipelinedCore<N>::step(CPU &cpu)
+void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
 {
     if (isDone(cpu))
         return;
-    bool stall = false;
+        
+    bool stall = false; // per cycle flag set by OF and later read by IF in same pass
 
     try
     {
@@ -128,7 +142,9 @@ void PipelinedCore<N>::step(CPU &cpu)
         {
             int currentStageNum = i + 1;
 
-            // MA / RW stage
+            // --------------------------------------
+            // ----------- MA / RW stage ------------
+            // --------------------------------------
 
             if (currentStageNum == memStage && stage[i].valid)
             {
@@ -179,7 +195,9 @@ void PipelinedCore<N>::step(CPU &cpu)
                 continue;
             }
 
-            // EX stage
+            // ------------------------------------
+            // ------------ EX stage --------------
+            // ------------------------------------
 
             if (currentStageNum == exStage && stage[i].valid)
             {
@@ -191,21 +209,15 @@ void PipelinedCore<N>::step(CPU &cpu)
                 if (isMicroprogrammed)
                 {
                     const MicroInstruction &u = stage[i].uInst;
-                    const bool anyFlag = u.get(ControlBit::FLAG_E_EN) || u.get(ControlBit::FLAG_GT_EN) ||
-                                         u.get(ControlBit::FLAG_LAND_EN) || u.get(ControlBit::FLAG_LOR_EN) ||
-                                         u.get(ControlBit::FLAG_LNOT_EN);
+                    const bool anyFlag = u.get(ControlBit::FLAG_E_EN) || u.get(ControlBit::FLAG_GT_EN) || u.get(ControlBit::FLAG_LAND_EN) || u.get(ControlBit::FLAG_LOR_EN) || u.get(ControlBit::FLAG_LNOT_EN);
                     const aluop op = static_cast<aluop>(u.args); // ALU function lives in args
 
                     if (u.get(ControlBit::PC_WRITE))
                     {
                         // b / beq / bgt / bland / blor / blnot / call / ret.
                         // A flag-enable bit next to PC_WRITE means "only if that flag is set".
-                        bool take = !anyFlag ||
-                                    (u.get(ControlBit::FLAG_E_EN) && cpu.flag_E) ||
-                                    (u.get(ControlBit::FLAG_GT_EN) && cpu.flag_GT) ||
-                                    (u.get(ControlBit::FLAG_LAND_EN) && cpu.flag_land) ||
-                                    (u.get(ControlBit::FLAG_LOR_EN) && cpu.flag_lor) ||
-                                    (u.get(ControlBit::FLAG_LNOT_EN) && cpu.flag_lnot);
+                        bool take = !anyFlag || (u.get(ControlBit::FLAG_E_EN) && cpu.flag_E) || (u.get(ControlBit::FLAG_GT_EN) && cpu.flag_GT) || (u.get(ControlBit::FLAG_LAND_EN) && cpu.flag_land) || (u.get(ControlBit::FLAG_LOR_EN) && cpu.flag_lor) || (u.get(ControlBit::FLAG_LNOT_EN) && cpu.flag_lnot);
+
                         if (take)
                         {
                             // A_READ + PC_WRITE = pc <- A (ret); otherwise pc <- branch target
@@ -372,12 +384,12 @@ void PipelinedCore<N>::step(CPU &cpu)
                             flush_count++;
                         }
                     }
-                    if (isMicroprogrammed)
-                        isMicroSequencerBusy = false;
                 }
             }
 
-            // OF stage
+            // -----------------------------------
+            // ------------ OF stage -------------
+            // -----------------------------------
 
             if (currentStageNum == readStage)
             {
@@ -392,6 +404,39 @@ void PipelinedCore<N>::step(CPU &cpu)
                     stage[i].a = (inst.op == Opcode::ret) ? cpu.regs[ra] : cpu.regs[inst.rs1];
                     stage[i].b = inst.isImm ? ImmValue(inst.mod, inst.imm) : cpu.regs[inst.rs2];
                     stage[i].storeVal = (inst.op == Opcode::st) ? cpu.regs[inst.rd] : 0;
+
+                    // Data Forwarding
+                    int exIdx = writeStage - 1;
+                    const auto &prod = stage[exIdx];
+                    if (prod.valid)
+                    {
+                        int destReg = -1;
+                        uint32_t forwardVal = prod.result;
+
+                        if (prod.inst.op == Opcode::call)
+                        {
+                            destReg = ra;
+                            forwardVal = prod.pc + 4;
+                        }
+                        else if (prod.inst.op != Opcode::ld && writesRegister(prod.inst, prod.inst.rd))
+                        {
+                            destReg = prod.inst.rd;
+                        }
+
+                        if (destReg != -1)
+                        {
+                            int srcA, srcB, srcStore;
+                            getSources(inst, srcA, srcB, srcStore);
+ 
+                            if (srcA == destReg)
+                                stage[i].a = forwardVal;
+                            if (srcB == destReg)
+                                stage[i].b = forwardVal;
+                            if (srcStore == destReg)
+                                stage[i].storeVal = forwardVal;
+                        }
+                    }
+
                     if (isMicroprogrammed)
                     {
                         // One horizontal control word per ISA instruction.
@@ -404,42 +449,31 @@ void PipelinedCore<N>::step(CPU &cpu)
 
             if (i + 1 < static_cast<int>(N) && (!stall || currentStageNum > readStage))
             {
-                // Prevent IF stage from shifting into OF while the micro-sequencer is busy translating.
-                // bool preventShift = (isMicroprogrammed && isMicroSequencerBusy && currentStageNum == 1);
-                bool preventShift = false;
-                if (!preventShift)
-                {
-                    stage[i + 1] = stage[i];
-                    stage[i].valid = false;
-                }
+                stage[i + 1] = stage[i];
+                stage[i].valid = false;
             }
 
-            // IF stage
+            // ----------------------------------
+            // ------------ IF stage ------------
+            // ----------------------------------
 
             if (currentStageNum == 1 && !stall)
             {
-                if (isMicroprogrammed && isMicroSequencerBusy)
+                if (cpu.pc < cpu.instruction_limit)
                 {
-                    // Natural stall holding the IF stage state
+                    stage[0].valid = true;
+                    stage[0].inst = decode(cpu.fetchInst());
+                    stage[0].pc = cpu.pc;
+                    stage[0].a = 0;
+                    stage[0].b = 0;
+                    stage[0].result = 0;
+                    stage[0].storeVal = 0;
+                    if (isMicroprogrammed)
+                        stage[0].uInst = MicroInstruction{};
+                    cpu.pc += 4;
                 }
                 else
-                {
-                    if (cpu.pc < cpu.instruction_limit)
-                    {
-                        stage[0].valid = true;
-                        stage[0].inst = decode(cpu.fetchInst());
-                        stage[0].pc = cpu.pc;
-                        stage[0].a = 0;
-                        stage[0].b = 0;
-                        stage[0].result = 0;
-                        stage[0].storeVal = 0;
-                        if (isMicroprogrammed)
-                            stage[0].uInst = MicroInstruction{};
-                        cpu.pc += 4;
-                    }
-                    else
-                        stage[0].valid = false;
-                }
+                    stage[0].valid = false;
             }
         }
     }
@@ -452,8 +486,6 @@ void PipelinedCore<N>::step(CPU &cpu)
         cpu.pc = cpu.instruction_limit;
         for (size_t i = 0; i < N; ++i)
             stage[i].valid = false;
-        if (isMicroprogrammed)
-            isMicroSequencerBusy = false;
     }
 
     cycle_count++;

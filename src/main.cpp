@@ -262,7 +262,6 @@ int main(int argc, char *argv[])
                     if (activeCore && activeCore->isMicroprogrammed)
                     {
                         cout << "Micro-PC: " << activeCore->currentMicroPC << "\n";
-                        cout << "Micro-Sequencer Busy: " << (activeCore->isMicroSequencerBusy ? "True" : "False") << "\n";
                     }
                     else
                     {
