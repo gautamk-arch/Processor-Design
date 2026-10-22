@@ -5,19 +5,25 @@
 // ============================================================================
 //  Internal building blocks
 // ============================================================================
-
+/*
+Constant	    Purpose
+BIAS = 127	    Converts between stored and unbiased exponents
+E_MIN = -126    Smallest exponent for a normal number
+E_MAX = 127	    Largest exponent for a normal number
+SIGN_MASK	    Selects the sign bit
+QNAN_BIT	    Marks a NaN as quiet
+DEFAULT_NAN	    Standard NaN bit pattern returned for certain invalid operations
+POS_INF	        Positive infinity
+MAX_FINITE	    Largest finite positive single-precision value
+*/
 static constexpr int32_t BIAS = 127;
-static constexpr int32_t E_MIN = -126; // smallest normal exponent (X)
-static constexpr int32_t E_MAX = 127;  // largest normal exponent  (X)
+static constexpr int32_t E_MIN = -126; 
+static constexpr int32_t E_MAX = 127;
 static constexpr uint32_t SIGN_MASK = 0x80000000u;
-static constexpr uint32_t QNAN_BIT = 0x00400000u; // top mantissa bit marks a quiet NaN
+static constexpr uint32_t QNAN_BIT = 0x00400000u;
 static constexpr uint32_t DEFAULT_NAN = 0x7FC00000u;
 static constexpr uint32_t POS_INF = 0x7F800000u;
 static constexpr uint32_t MAX_FINITE = 0x7F7FFFFFu;
-
-// ---------------- Reuse the project's ALU ----------------
-// The ALU exposes 32-bit operations. Compose its ADD/SUB operations
-// to perform the wider integer arithmetic required by the FPU.
 static ALU fpuALU;
 
 static uint32_t aluAdd32(uint32_t a, uint32_t b)
@@ -97,6 +103,15 @@ static uint64_t shiftRightSticky(uint64_t m, int d)
 }
 
 // ---------------- unpacking (slide: "Unpack the E fields / significand") ----------------
+// in unpacking we are computing all the fields of the 32 bit number/float that we have received
+/*
+It stores:
+sign: whether the number is negative.
+exp: the unbiased exponent.
+sig: the 24-bit significand, including the implicit leading 1 for normal numbers.
+cls: whether the input is zero, normal, infinity or NaN.
+signaling: whether a NaN is signaling rather than quiet.
+*/   
 enum class Cls
 {
     ZERO,
@@ -108,8 +123,8 @@ enum class Cls
 struct Unpacked
 {
     bool sign = false;
-    int32_t exp = 0;    // unbiased exponent X
-    uint32_t sig = 0;   // 24-bit significand P, leading 1 at bit 23 (denormals are normalised)
+    int32_t exp = 0;    
+    uint32_t sig = 0;   
     Cls cls = Cls::ZERO;
     bool signaling = false;
 };
@@ -120,12 +135,16 @@ static Unpacked unpack(uint32_t bits)
     u.sign = (bits >> 31) & 1;
     const uint32_t E = (bits >> 23) & 0xFF;
     const uint32_t M = bits & 0x7FFFFF;
-
+    // three cases of abnormallity-->
+    //case#1--> all exponent bits are 1, i.e. E=255
+    // if Mantissa==0 then it is infinity else it is NaN
     if (E == 0xFF)
     {
         u.cls = M ? Cls::NaN : Cls::INF;
         u.signaling = M && !(M & QNAN_BIT);
     }
+    //case#2--> all exponent bits are 0, i.e. E=0
+    // if Mantissa==0 then it is 0 else it is a Denormal number
     else if (E == 0)
     {
         if (M == 0)
@@ -143,6 +162,7 @@ static Unpacked unpack(uint32_t bits)
             }
         }
     }
+    //case#3 ordinary noral number
     else
     {
         u.cls = Cls::NORMAL;
