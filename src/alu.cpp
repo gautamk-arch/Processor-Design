@@ -8,14 +8,11 @@ static uint64_t maskOf(int width)
 {
     return width >= 64 ? ~0ULL : ((1ULL << width) - 1);
 }
-
-
 struct AddOut
 {
     uint64_t sum;
     bool cout;
 };
-
 // ---------------- Brent-Kung Parallel-Prefix Adder ----------------
 // Computes carries using an up-sweep and down-sweep prefix tree.
 // Each prefix node combines:
