@@ -3,6 +3,7 @@
 #include "isa.h"
 #include "cpu.h"
 #include "microprogramming.h"
+#include "vertmicroprogramming.h"
 
 template <size_t N>
 struct PipelinedCore
@@ -19,9 +20,11 @@ struct PipelinedCore
         MicroInstruction uInst;
     };
     Slot stage[N];
-    Microprogramming microROM;
+    Microprogramming hROM;  // horizontal control store (wide control word)
+    VerticalMicroprogramming vROM; // vertical control store (encoded fields + decoder)
     size_t currentMicroPC = 0;
     bool isMicroprogrammed = false;
+    bool useVertical = false;
 
     int readStage;
     int exStage;

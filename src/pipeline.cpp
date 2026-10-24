@@ -439,10 +439,17 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
 
                     if (isMicroprogrammed)
                     {
-                        // One horizontal control word per ISA instruction.
-                        // Decode the opcode and fetch its control word directly.
-                        stage[i].uInst =
-                            microROM.fetch(microROM.entryFor(inst.op));
+                        // One control word per ISA instruction, looked up be opcode.
+                        // Both horizontal and vertical control stores hand back the same MicroInstruction type.
+
+                        if(useVertical){
+                            // Vertical: compact encoded fields -> decoder -> flat control bits
+                            stage[i].uInst = vROM.fetchDecoded(vROM.entryFor(inst.op));
+                        }
+                        else{
+                            // Horizontal: control bits read straight out of the control store.
+                            stage[i].uInst = hROM.fetch(hROM.entryFor(inst.op));
+                        }
                     }
                 }
             }
