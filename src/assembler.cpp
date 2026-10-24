@@ -149,6 +149,7 @@ vector<string> assemble(const string &src, vector<string> &errors)
         Instruction inst{};
         inst.mod = 0;
         inst.isImm = false;
+        inst.isFloat = false;
         std::istringstream iss(instStr);
         string mnemonic;
         iss >> mnemonic;
@@ -186,16 +187,31 @@ vector<string> assemble(const string &src, vector<string> &errors)
         // mapping the opcode
         if (mnemonic == "add")
             inst.op = static_cast<Opcode>(0);
+        else if (mnemonic == "addf") {
+            inst.op = static_cast<Opcode>(0); inst.isFloat = true;
+        }
         else if (mnemonic == "sub")
             inst.op = static_cast<Opcode>(1);
+        else if (mnemonic == "subf") {
+            inst.op = static_cast<Opcode>(1); inst.isFloat = true;
+        }
         else if (mnemonic == "mul")
             inst.op = static_cast<Opcode>(2);
+        else if (mnemonic == "mulf") {
+            inst.op = static_cast<Opcode>(2); inst.isFloat = true;
+        }
         else if (mnemonic == "div")
             inst.op = static_cast<Opcode>(3);
+        else if (mnemonic == "divf") {
+            inst.op = static_cast<Opcode>(3); inst.isFloat = true;
+        }
         else if (mnemonic == "mod")
             inst.op = static_cast<Opcode>(4);
         else if (mnemonic == "cmp")
             inst.op = static_cast<Opcode>(5);
+        else if (mnemonic == "cmpf") {
+            inst.op = static_cast<Opcode>(5); inst.isFloat = true;
+        }
         else if (mnemonic == "and")
             inst.op = static_cast<Opcode>(6);
         else if (mnemonic == "or")
@@ -281,6 +297,11 @@ vector<string> assemble(const string &src, vector<string> &errors)
                     {
                         inst.isImm = true;
                         inst.imm = CheckImmediate(ops[nextOpIndex], inst.mod, lNum, errors);
+                        
+                        if (inst.isFloat)
+                        {
+                            errors.push_back("Line " + std::to_string(lNum) + ": Floating-point instructions do not support immediate values");
+                        }
                     }
                 }
             }

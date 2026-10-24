@@ -1,4 +1,5 @@
 #include "isa.h"
+
 uint32_t ImmValue(int mod,uint16_t imm16){
     if(mod==0){
         int16_t signed_imm= static_cast<int16_t>(imm16);
@@ -36,6 +37,10 @@ uint32_t encode(Instruction inst){
         }
         else{
             word|=(static_cast<uint32_t>(inst.rs2) & 0xF)<<14;
+            // Set the 0th bit if it is a floating-point instruction
+            if(inst.isFloat){
+                word |= 1; 
+            }
         }
     }
     return word;
@@ -49,6 +54,7 @@ Instruction decode(uint32_t word){
 
     if(isBranch){
         inst.isImm=false;
+        inst.isFloat=false; // Default to false
         inst.mod=0;
         inst.rd=0;
         inst.rs1=0;
@@ -68,9 +74,11 @@ Instruction decode(uint32_t word){
             inst.mod=(word>>16)&0x3;
             inst.imm=static_cast<int32_t>(word & 0xFFFF);
             inst.rs2=0;
+            inst.isFloat=false; // Default to false for immediate instructions
         }
         else{
             inst.rs2=(word>>14)&0xF;
+            inst.isFloat=(word & 1) == 1; //  Extract the 0th bit
             inst.mod=0;
             inst.imm=0;
         }

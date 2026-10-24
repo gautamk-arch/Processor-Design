@@ -8,11 +8,17 @@ static const string OPCODE_NAMES[]={
     "not", "mov", "lsl", "lsr", "asr", "nop", "ld", "st",
     "beq", "bgt", "b", "call", "ret", "land","lor","lnot","bland","blor","blnot"
 };
+
 string formatInstruction(const Instruction& inst){
     int opIndex=static_cast<int> (inst.op);
-    if(opIndex>26) return "Unkown Illegal Instruction";
+    if(opIndex>26) return "Unknown Illegal Instruction";
 
     string mnemonic=OPCODE_NAMES[opIndex];
+
+    // Append 'f' if the 0th bit flag was set during decode
+    if(inst.isFloat){
+        mnemonic += "f";
+    }
 
     if(inst.isImm){
         if(inst.mod==1)mnemonic+="u";
@@ -63,11 +69,13 @@ string formatInstruction(const Instruction& inst){
     }
     return asmLine.str();
 }
+
 string disassembleWord(const string& hexWord){
     uint32_t machineCode=std::stoul(hexWord,nullptr,16);
     Instruction inst=decode(machineCode);
     return formatInstruction(inst);
 }
+
 vector<string> disassembleProgram(const vector<string>& hexProgram){
     vector<string> assemblyLines;
     for(const auto& word:hexProgram){
