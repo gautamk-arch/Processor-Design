@@ -20,8 +20,8 @@
 //  know that a register holds a float.
 // ============================================================================
 #include <cstdint>
-#include "alu.h"
 #include <string>
+#include "alu.h"
 
 enum class fpuop
 {
@@ -31,7 +31,8 @@ enum class fpuop
     FDIV,  // A / B
     FSQRT, // sqrt(A)          (B ignored)
     ITOF,  // (float) A        A is a signed 32-bit integer
-    FTOI   // (int) A          A is a float, truncates toward zero (like a C cast)
+    FTOI,  // (int) A          A is a float, truncates toward zero (like a C cast)
+    FCMP   // compare A with B: sets flag_E (A == B) and flag_GT (A > B); val is not used
 };
 
 // The four IEEE 754 rounding modes (slides: "IEEE 754 Rounding Modes").
@@ -53,6 +54,11 @@ struct fpuResult
     bool flag_OVERFLOW = false;  // result too large -> inf (or max finite)
     bool flag_UNDERFLOW = false; // tiny and inexact result
     bool flag_INEXACT = false;   // result had to be rounded
+
+    // FCMP results (same meaning as the ALU CMP flags, so beq / bgt work unchanged)
+    bool flag_E = false;         // A == B   (+0 == -0)
+    bool flag_GT = false;        // A >  B
+    bool flag_UNORDERED = false; // A or B is NaN: E and GT are both false
 };
 
 class FPU
@@ -70,6 +76,7 @@ public:
     fpuResult sqrt(uint32_t a);
     fpuResult intToFloat(int32_t a);
     fpuResult floatToInt(uint32_t a);
+    fpuResult compare(uint32_t a, uint32_t b);
 
     // Helpers for tests / printing
     static float bitsToFloat(int32_t bits);

@@ -524,6 +524,30 @@ static int32_t fpToInt(uint32_t a, fpuResult &f)
     return static_cast<int32_t>(ua.sign ? neg32(mag) : mag);
 }
 
+// Float compare. IEEE ordering equals the ordering of the bit patterns read as
+// sign-magnitude integers, so convert to two's complement and reuse the ALU's CMP.
+static uint32_t toTwosComplement(uint32_t bits)
+{
+    return (bits & SIGN_MASK) ? neg32(bits & ~SIGN_MASK) : bits; // -0 becomes 0, so -0 == +0
+}
+
+static void fpCompare(uint32_t a, uint32_t b, fpuResult &f)
+{
+    const Unpacked ua = unpack(a), ub = unpack(b);
+    if (ua.cls == Cls::NaN || ub.cls == Cls::NaN)
+    {
+        f.flag_UNORDERED = true; // NaN is unordered: not equal, not greater
+        if (ua.signaling || ub.signaling)
+            f.flag_INVALID = true;
+        return;
+    }
+    const aluResult res = fpuALU.execute(aluop::CMP,
+                                         static_cast<int32_t>(toTwosComplement(a)),
+                                         static_cast<int32_t>(toTwosComplement(b)));
+    f.flag_E = res.flag_E;
+    f.flag_GT = res.flag_GT;
+}
+
 
 // ============================================================================
 //  Public interface
@@ -577,6 +601,13 @@ fpuResult FPU::floatToInt(uint32_t a)
     return r;
 }
 
+fpuResult FPU::compare(uint32_t a, uint32_t b)
+{
+    fpuResult r;
+    fpCompare(a, b, r);
+    return r;
+}
+
 fpuResult FPU::execute(fpuop op, int32_t A, int32_t B)
 {
     const uint32_t a = static_cast<uint32_t>(A), b = static_cast<uint32_t>(B);
@@ -596,6 +627,8 @@ fpuResult FPU::execute(fpuop op, int32_t A, int32_t B)
         return intToFloat(A);
     case fpuop::FTOI:
         return floatToInt(a);
+    case fpuop::FCMP:
+        return compare(a, b);
     }
     return fpuResult{};
 }
