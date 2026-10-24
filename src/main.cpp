@@ -18,14 +18,15 @@ int main(int argc, char *argv[])
     // Arguments parsing
     if (argc < 2)
     {
-        std::cerr << "Usage: " << argv[0] << " [-d|--debug] [--pipe] [--micro] <filename.asm>\n";
+        std::cerr << "Usage: " << argv[0] << " [-d|--debug] [--pipe] [--hmicro|--vmicro] <filename.asm>\n";
         return 1;
     }
 
     string asmFileName = "";
     bool use_debugger = false;
     bool use_pipe = false;
-    bool use_micro = false;
+    bool use_hmicro = false;
+    bool use_vmicro = false;
 
     for (int i = 1; i < argc; i++)
     {
@@ -38,15 +39,38 @@ int main(int argc, char *argv[])
         {
             use_pipe = true;
         }
-        else if (arg == "--micro")
+        else if (arg == "--hmicro")
         {
-            use_micro = true;
+            use_hmicro = true;
+        }
+        else if (arg == "--vmicro")
+        {
+            use_vmicro = true;
+        }
+        else if (arg.size() > 1 && arg[0] == '-')
+        {
+            // catches typos
+            cerr << "Error: Unknown option '"<< arg <<"'.\n";
+            return 1;
         }
         else
         {
             asmFileName = arg;
         }
     }
+
+    // Flag combination rules
+    if (use_hmicro && use_vmicro)
+    {
+        cerr << "Error: --hmicro and --vmicro cannot be used together. Choose one.\n";
+        return 1;
+    }
+    if ((use_hmicro || use_vmicro) && !use_pipe)
+    {
+        std::cerr << "Error: --hmicro / --vmicro require --pipe (e.g. " << argv[0] << " --pipe --vmicro <filename.asm>).\n";
+        return 1;
+    }
+
     if (asmFileName.empty())
     {
         std::cerr << "Error: No input file specified.\n";
@@ -106,22 +130,31 @@ int main(int argc, char *argv[])
     PipelinedCore<4> pipe;
     PipelinedCore<4> *activeCore = nullptr;
 
-    // Mode 3: Pipeline WITH Microprogramming 
-    // (Triggers if the user runs: ./simulator --micro OR ./simulator --pipe --micro)
-    if (use_micro)
+    if (use_pipe)
     {
-        cout << "\n[Mode: Horizontal Microprogrammed Pipelined CPU]\n";
-        pipe.isMicroprogrammed = true;
         activeCore = &pipe;
-    }
-
-    // Mode 2: Pipeline WITHOUT Microprogramming 
-    // (Triggers if the user runs: ./simulator --pipe)
-    else if (use_pipe)
-    {
-        cout << "\n[Mode: Hardwired 4-Stage Pipelined CPU]\n";
-        pipe.isMicroprogrammed = false;
-        activeCore = &pipe;
+        
+        if (use_hmicro)
+        {
+            //   --pipe --hmicro  -> Mode 3: Horizontal microprogrammed pipeline
+            cout << "\n[Mode: Horizontal Microprogrammed Pipelined CPU]\n";
+            pipe.isMicroprogrammed = true;
+            pipe.useVertical = false;
+        }
+        else if (use_vmicro)
+        {
+            //   --pipe --vmicro  -> Mode 4: Vertical microprogrammed pipeline
+            cout << "\n[Mode: Vertical Microprogrammed Pipelined CPU]\n";
+            pipe.isMicroprogrammed = true;
+            pipe.useVertical = true;
+        }
+        else
+        {
+            //   --pipe           -> Mode 2: Hardwired pipeline (no microprogramming)
+            cout << "\n[Mode: Hardwired 4-Stage Pipelined CPU]\n";
+            pipe.isMicroprogrammed = false;
+            pipe.useVertical = false;
+        }
     }
 
     // Mode 1: Hardwired Single-Cycle CPU 

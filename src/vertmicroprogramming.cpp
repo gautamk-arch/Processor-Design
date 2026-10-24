@@ -233,7 +233,7 @@ void VerticalMicroprogramming::build() {
 std::size_t VerticalMicroprogramming::entryFor(Opcode opcode) const {
     const auto idx = static_cast<std::size_t>(opcode);
     if (idx >= entry_.size()) {
-        throw std::invalid_argument("Opcode out of range in VerticalMicroprogramming::entryFor");
+        throw IllegalInstruction();
     }
     return entry_[idx];
 }
