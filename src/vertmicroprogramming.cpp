@@ -3,12 +3,15 @@
 #include "alu.h"
 #include <limits>
 #include <utility>
+
 VerticalMicroprogramming::VerticalMicroprogramming() {
     build();
 }
+
 void VerticalMicroprogramming::reset() {
     build();
 }
+
 VerticalMicroInstruction VerticalMicroprogramming::make(
     std::string label, FetchSource source, std::uint16_t immediate, std::uint16_t args) {
     VerticalMicroInstruction result;
@@ -19,7 +22,7 @@ VerticalMicroInstruction VerticalMicroprogramming::make(
     return result;
 }
 
-// translates encoded fields back to flat ControlBits for the pipeline
+// Translates encoded fields back to flat ControlBits for the pipeline
 MicroInstruction VerticalMicroprogramming::decode(const VerticalMicroInstruction& vmi) {
     MicroInstruction mi;
     mi.label = vmi.label;
@@ -28,7 +31,7 @@ MicroInstruction VerticalMicroprogramming::decode(const VerticalMicroInstruction
     mi.branchTarget = vmi.branchTarget;
     mi.args = vmi.args;
 
-    // decoding datapath control
+    // Decoding datapath control
     switch (vmi.dpCtrl) {
         case VDataPathCtrl::ALU_TO_REG:
             mi.set(ControlBit::ALU_RESULT_WRITE);
@@ -47,7 +50,7 @@ MicroInstruction VerticalMicroprogramming::decode(const VerticalMicroInstruction
         case VDataPathCtrl::NONE: break;
     }
 
-    //decoding pc control
+    // Decoding PC control
     switch (vmi.pcCtrl) {
         case VPcCtrl::BRANCH:
             mi.set(ControlBit::BRANCH_TARGET_EN);
@@ -65,7 +68,7 @@ MicroInstruction VerticalMicroprogramming::decode(const VerticalMicroInstruction
         case VPcCtrl::NONE: break;
     }
 
-    //decoding flag control
+    // Decoding flag control
     switch (vmi.flagCtrl) {
         case VFlagCtrl::CMP_UPDATE:
             mi.set(ControlBit::FLAG_E_EN);
@@ -127,7 +130,7 @@ std::vector<VerticalMicroInstruction> VerticalMicroprogramming::makeInstructionP
 
     const std::uint16_t aluFn = static_cast<std::uint16_t>(opcode);
 
-    //wiring all 27 opcodes exactly matching horizontal bit signals
+    // Wiring all 27 opcodes exactly matching horizontal bit signals
     switch (opcode) {
         case Opcode::add:
         case Opcode::sub:
@@ -196,7 +199,71 @@ std::vector<VerticalMicroInstruction> VerticalMicroprogramming::makeInstructionP
     return code;
 }
 
+void VerticalMicroprogramming::build() {
+    rom_.clear();
+    entry_.fill(0);
+
+    // 1. Setup the prologue / dispatch sequence (matching horizontal ROM layout)
+    rom_.push_back(make("beginInstruction"));
+    rom_.push_back(make("mfetch"));
+    const std::size_t dispatchAddress = rom_.size();
+    rom_.push_back(make("mswitch", FetchSource::OPCODE_SWITCH));
+    rom_[dispatchAddress].args = static_cast<std::uint16_t>(dispatchAddress);
+
+    // 2. Populate all 27 instruction microprograms
+    for (std::size_t i = 0; i < 27; ++i) {
+        const Opcode op = static_cast<Opcode>(i);
+        VerticalMicroProgram prog;
+        prog.entry = rom_.size();
+        prog.instructions = makeInstructionProgram(op);
+
+        // At the end of the microprogram, loop back to instruction fetch (0)
+        prog.instructions.back().fetchSource = FetchSource::BRANCH_TARGET;
+        prog.instructions.back().branchTarget = 0;
+
+        entry_[i] = prog.entry;
+        programs_[i] = prog;
+
+        for (const auto& inst : prog.instructions) {
+            rom_.push_back(inst);
+        }
+    }
+}
+
+std::size_t VerticalMicroprogramming::entryFor(Opcode opcode) const {
+    const auto idx = static_cast<std::size_t>(opcode);
+    if (idx >= entry_.size()) {
+        throw std::invalid_argument("Opcode out of range in VerticalMicroprogramming::entryFor");
+    }
+    return entry_[idx];
+}
+
+std::size_t VerticalMicroprogramming::nextMicroPC(std::size_t microPC, bool isMBranch) const {
+    if (microPC >= rom_.size()) {
+        throw std::out_of_range("Micro-PC is outside microprogram ROM");
+    }
+    const auto& current = rom_[microPC];
+    switch (current.fetchSource) {
+        case FetchSource::NEXT_MICRO_PC:
+            return microPC + 1;
+        case FetchSource::BRANCH_TARGET:
+            return current.branchTarget;
+        case FetchSource::CONDITIONAL_BRANCH_RESULT:
+            return isMBranch ? current.branchTarget : (microPC + 1);
+        case FetchSource::OPCODE_SWITCH:
+            return microPC; // Resolved dynamically by CPU using entryFor(opcode)
+        default:
+            return microPC + 1;
+    }
+}
+
+std::size_t VerticalMicroprogramming::romSize() const noexcept {
+    return rom_.size();
+}
+
 MicroInstruction VerticalMicroprogramming::fetchDecoded(std::size_t microPC) const {
-    if (microPC >= rom_.size()) throw std::out_of_range("Micro-PC is outside microprogram ROM");
+    if (microPC >= rom_.size()) {
+        throw std::out_of_range("Micro-PC is outside microprogram ROM");
+    }
     return decode(rom_[microPC]); // Pass the microinstruction through the decoder before returning to CPU
 }
