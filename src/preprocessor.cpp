@@ -62,6 +62,53 @@ string expandMacros(const string &src, vector<string> &errors)
                 }
             }
         }
+        //expand the movf macro
+        else if(lowinst == "movf")
+        {
+            string operands;
+            getline(linestream, operands);
+            
+            // Remove any trailing comments
+            size_t commentstartpos = operands.find('@');
+            if(commentstartpos != string::npos)
+            {
+                operands = operands.substr(0, commentstartpos);
+            }
+            
+            // Strip all spaces 
+            operands.erase(remove_if(operands.begin(), operands.end(), ::isspace), operands.end());
+            
+            size_t commaPos = operands.find(',');
+            if (commaPos == string::npos || operands.empty())
+            {
+                string err = "Error at line number " + to_string(line_number) + ": Invalid movf format (expected movf reg, imm)";
+                errors.push_back(err);
+                expandedsrc += line + "\n";
+            }
+            else
+            {
+                string reg = operands.substr(0, commaPos);
+                string immStr = operands.substr(commaPos + 1);
+                
+                try
+                {
+                    // Parse as 64-bit to prevent overflow, base 0 handles 0x IEEE 754 formats flawlessly
+                    unsigned long long fullImm = stoull(immStr, nullptr, 0);
+                    unsigned int upper16 = (fullImm >> 16) & 0xFFFF;
+                    unsigned int lower16 = fullImm & 0xFFFF;
+                    
+                    // Replace the macro with the two  hardware instructions
+                    expandedsrc += "\tmovh " + reg + ", " + to_string(upper16) + "\n";
+                    expandedsrc += "\toru " + reg + ", " + reg + ", " + to_string(lower16) + "\n";
+                }
+                catch (...)
+                {
+                    string err = "Error at line number " + to_string(line_number) + ": Invalid immediate value in movf";
+                    errors.push_back(err);
+                    expandedsrc += line + "\n";
+                }
+            }
+        }
         else
         {
             expandedsrc+=line+"\n";
