@@ -1,12 +1,32 @@
 #pragma once
+#include <cstddef>
 #include <cstdint>
 #include "isa.h"
 #include "cpu.h"
 #include "microprogramming.h"
 #include "vertmicroprogramming.h"
 
+// This struct acts as a shared blueprint for building different CPU pipelines.
+//  It uses "pure virtual" functions (=0) which means it doesn't do anything on its own. Instead, it forces the derived struct of pipelines (4-stage and 6-stage) to implement these functions.
+struct PipelineBase
+{
+    size_t currentMicroPC = 0;
+    bool isMicroprogrammed = false; // true: control words come from a micro-ROM, false: hardwired
+    bool useVertical = false;       // only meaningful when isMicroprogrammed: false = horizontal, true = vertical
+
+    virtual ~PipelineBase() = default;
+    virtual void reset() = 0;
+    virtual void step(CPU &cpu) = 0;
+    virtual void run(CPU &cpu) = 0;
+    virtual void printPipelineDiagram() const = 0;
+};
+
+
+// N = number of stages
+// N = 4 : IF, OF, EX, MA&RW
+// N = 6 : IF, OF, EX, MA1, MA2, RW
 template <size_t N>
-struct PipelinedCore
+struct PipelinedCore : PipelineBase
 {
     struct Slot
     {
@@ -22,14 +42,12 @@ struct PipelinedCore
     Slot stage[N];
     Microprogramming hROM;  // horizontal control store (wide control word)
     VerticalMicroprogramming vROM; // vertical control store (encoded fields + decoder)
-    size_t currentMicroPC = 0;
-    bool isMicroprogrammed = false;
-    bool useVertical = false;
 
-    int readStage;
-    int exStage;
-    int memStage;
-    int writeStage;
+    // Stage numbers are 1-based (IF = 1).
+    int readStage;  // OF: operands are read here
+    int exStage;    // EX: ALU work, branches resolve here
+    int memStage;   // MA: load/store interacts with memory
+    int writeStage; // RW: results are written into register file
 
     uint32_t cycle_count = 0;
     uint32_t instruction_count = 0;
@@ -38,9 +56,13 @@ struct PipelinedCore
 
     PipelinedCore()
     {
-        configure4stage();
+        static_assert(N == 4 || N == 6, "PipelinedCore supports only 4 or 6 stages");
+        if (N == 4)
+            configure4stage();
+        else
+            configure6stage();
     }
-    void reset()
+    void reset() override
     {
         for (size_t i = 0; i < N; ++i)
         {
@@ -51,6 +73,8 @@ struct PipelinedCore
         stall_count = 0;
         flush_count = 0;
     }
+
+    // IF, OF, EX, MA&RW 
     void configure4stage()
     {
         readStage = 2;
@@ -58,9 +82,19 @@ struct PipelinedCore
         memStage = 4;
         writeStage = 4;
     }
-
+    
+    // IF, OF, EX, MA1, MA2, RW
+    // MA1 models memory latency (address and data are sent to mar and mdr), MA2 models memory access
+    void configure6stage()
+    {
+        readStage = 2;
+        exStage = 3;
+        memStage = 5;
+        writeStage = 6;
+    }
+    
     bool isDone(const CPU &cpu) const;
-    void step(CPU &cpu);
-    void run(CPU &cpu);
-    void printPipelineDiagram() const;
+    void step(CPU &cpu) override;
+    void run(CPU &cpu) override;
+    void printPipelineDiagram() const override;
 };
