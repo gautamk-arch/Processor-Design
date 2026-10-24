@@ -78,8 +78,20 @@ static void getSources(const Instruction &inst, int &srcA, int &srcB, int &srcSt
     }
 }
 
+// Finds the youngest in-flight instruction that will write 'reg'.
+// "In flight" = already past EX but not yet written back: slots exStage .. writeStage-1 (0-based) at the moment OF is evaluated. A lower slot index is a younger instruction, so scanning upwards returns the youngest writer first -- the one the consumer must see.
+// Returns -1 when no in-flight instruction writes 'reg' (the register file is already up to date).
 template <size_t N>
-bool hasDataHazard(const typename PipelinedCore<N>::Slot *stage, int readStage, int writeStage)
+static int findProducer(const typename PipelinedCore<N>::Slot *stage, int exStage, int writeStage, int reg)
+{
+    for (int idx = exStage; idx < writeStage; ++idx)
+        if (stage[idx].valid && writesRegister(stage[idx].inst, reg))
+            return idx;
+    return -1;
+}
+
+template <size_t N>
+bool hasDataHazard(const typename PipelinedCore<N>::Slot *stage, int readStage, int exStage, int memStage, int writeStage)
 {
     int readIdx = readStage - 1;
     if (!stage[readIdx].valid)
@@ -88,14 +100,16 @@ bool hasDataHazard(const typename PipelinedCore<N>::Slot *stage, int readStage, 
     int srcA, srcB, srcStore;
     getSources(stage[readIdx].inst, srcA, srcB, srcStore);
 
-    // Stalling if immediately previous instruction was Load.
-    int exIdx = writeStage - 1; // stage[3], which just completed the EX stage
-    if (stage[exIdx].valid && stage[exIdx].inst.op == Opcode::ld)
+    // Every ALU result can be forwarded, so the only RAW hazard left is a load whose data is not ready yet. Loaded data exists once the load has passed the memory stage, i.e. it sits in a slot with index >= memStage. Until then the consumer has to wait.
+    const int srcs[3] = {srcA, srcB, srcStore};
+    for (int reg : srcs)
     {
-        int ldDest = stage[exIdx].inst.rd;
-        if((srcA != -1 && srcA == ldDest) || (srcB != -1 && srcB == ldDest) || (srcStore != -1 && srcStore == ldDest)) return true; // 1 cycle stall
+        if (reg == -1)
+            continue;
+        int p = findProducer<N>(stage, exStage, writeStage, reg);
+        if (p != -1 && stage[p].inst.op == Opcode::ld && p < memStage)
+            return true; // stall
     }
-    // All other RAW hazards are successfully bypassed via the forwarding logic
     return false;
 }
 
@@ -393,7 +407,7 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
 
             if (currentStageNum == readStage)
             {
-                if (hasDataHazard<N>(stage, readStage, writeStage))
+                if (hasDataHazard<N>(stage, readStage, exStage, memStage, writeStage))
                 {
                     stall = true;
                     stall_count++;
@@ -405,38 +419,24 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
                     stage[i].b = inst.isImm ? ImmValue(inst.mod, inst.imm) : cpu.regs[inst.rs2];
                     stage[i].storeVal = (inst.op == Opcode::st) ? cpu.regs[inst.rd] : 0;
 
-                    // Data Forwarding
-                    int exIdx = writeStage - 1;
-                    const auto &prod = stage[exIdx];
-                    if (prod.valid)
+                    // Data Forwarding: for each source operand, take the value from the youngest in-flight producer (if there is one); otherwise the register-file value read above is current.
+                    // A call forwards its return address (pc + 4), everything else its result.
+                    int srcA, srcB, srcStore;
+                    getSources(inst, srcA, srcB, srcStore);
+
+                    auto forwardInto = [&](int reg, uint32_t &operand) -> void
                     {
-                        int destReg = -1;
-                        uint32_t forwardVal = prod.result;
-
-                        if (prod.inst.op == Opcode::call)
-                        {
-                            destReg = ra;
-                            forwardVal = prod.pc + 4;
-                        }
-                        else if (prod.inst.op != Opcode::ld && writesRegister(prod.inst, prod.inst.rd))
-                        {
-                            destReg = prod.inst.rd;
-                        }
-
-                        if (destReg != -1)
-                        {
-                            int srcA, srcB, srcStore;
-                            getSources(inst, srcA, srcB, srcStore);
- 
-                            if (srcA == destReg)
-                                stage[i].a = forwardVal;
-                            if (srcB == destReg)
-                                stage[i].b = forwardVal;
-                            if (srcStore == destReg)
-                                stage[i].storeVal = forwardVal;
-                        }
-                    }
-
+                        if (reg == -1)
+                            return;
+                        int p = findProducer<N>(stage, exStage, writeStage, reg);
+                        if (p == -1)
+                            return;
+                        operand = (stage[p].inst.op == Opcode::call) ? stage[p].pc + 4 : stage[p].result;
+                    };
+                    forwardInto(srcA, stage[i].a);
+                    forwardInto(srcB, stage[i].b);
+                    forwardInto(srcStore, stage[i].storeVal);
+                    
                     if (isMicroprogrammed)
                     {
                         // One control word per ISA instruction, looked up be opcode.
@@ -502,7 +502,9 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
 template <size_t N>
 void PipelinedCore<N>::printPipelineDiagram() const
 {
-    const char *labels[4] = {"IF", "OF", "EX", "MA/RW"};
+    const char *labels4[] = {"IF", "OF", "EX", "MA/RW"};
+    const char *labels6[] = {"IF", "OF", "EX", "MA1", "MA2", "RW"};
+    const char *const *labels = (N == 4) ? labels4 : labels6;
     cout << "Cycle " << std::setw(3) << cycle_count << " | ";
     for (size_t i = 0; i < N; ++i)
     {
@@ -513,8 +515,8 @@ void PipelinedCore<N>::printPipelineDiagram() const
             cout << "  --- | ";
     }
     double cpi = (instruction_count > 0) ? static_cast<double>(cycle_count) / instruction_count : 0.0;
-    cout << "Insts: " << instruction_count << " Stalls: " << stall_count << " Flushes: " << flush_count
-         << " CPI: " << std::fixed << std::setprecision(2) << cpi << "\n";
+    cout << "Insts: " << instruction_count << " Stalls: " << stall_count << " Flushes: " << flush_count << " CPI: " << std::fixed << std::setprecision(2) << cpi << "\n";
 }
 
 template struct PipelinedCore<4>;
+template struct PipelinedCore<6>;

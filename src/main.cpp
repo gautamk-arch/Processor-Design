@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 #include <chrono>
+#include <memory>
 #include "assembler.h"
 #include "disassembler.h"
 #include "preprocessor.h"
@@ -18,13 +19,14 @@ int main(int argc, char *argv[])
     // Arguments parsing
     if (argc < 2)
     {
-        std::cerr << "Usage: " << argv[0] << " [-d|--debug] [--pipe] [--hmicro|--vmicro] <filename.asm>\n";
+        std::cerr << "Usage: " << argv[0] << " [-d|--debug] [--pipe4|--pipe6] [--hmicro|--vmicro] <filename.asm>\n";
         return 1;
     }
 
     string asmFileName = "";
     bool use_debugger = false;
-    bool use_pipe = false;
+    bool use_pipe4 = false;
+    bool use_pipe6 = false;
     bool use_hmicro = false;
     bool use_vmicro = false;
 
@@ -35,9 +37,18 @@ int main(int argc, char *argv[])
         {
             use_debugger = true;
         }
+        else if (arg == "--pipe4")
+        {
+            use_pipe4 = true;
+        }
+        else if (arg == "--pipe6")
+        {
+            use_pipe6 = true;
+        }
         else if (arg == "--pipe")
         {
-            use_pipe = true;
+            cerr << "Error: Use --pipe4 (4-stage) or --pipe6 (6-stage).\n";
+            return 1;
         }
         else if (arg == "--hmicro")
         {
@@ -65,9 +76,14 @@ int main(int argc, char *argv[])
         cerr << "Error: --hmicro and --vmicro cannot be used together. Choose one.\n";
         return 1;
     }
-    if ((use_hmicro || use_vmicro) && !use_pipe)
+    if (use_pipe4 && use_pipe6)
     {
-        std::cerr << "Error: --hmicro / --vmicro require --pipe (e.g. " << argv[0] << " --pipe --vmicro <filename.asm>).\n";
+        cerr << "Error: --pipe4 and --pipe6 cannot be used together. Choose one.\n";
+        return 1;
+    }
+    if ((use_hmicro || use_vmicro) && !(use_pipe4 || use_pipe6))
+    {
+        std::cerr << "Error: --hmicro / --vmicro require --pipe4 or --pipe6 (e.g. " << argv[0] << " --pipe6 --vmicro <filename.asm>).\n";
         return 1;
     }
 
@@ -127,37 +143,43 @@ int main(int argc, char *argv[])
 
     // Architecture Configuration
     CPU cpu;
-    PipelinedCore<4> pipe;
-    PipelinedCore<4> *activeCore = nullptr;
+    std::unique_ptr<PipelineBase> pipeline; // owns the selected pipeline
+    PipelineBase *activeCore = nullptr; // stays null in non-pipelined mode
 
-    if (use_pipe)
+    if (use_pipe4 || use_pipe6)
     {
-        activeCore = &pipe;
+        if (use_pipe6)
+            pipeline = std::make_unique<PipelinedCore<6>>();
+        else
+            pipeline = std::make_unique<PipelinedCore<4>>();
+        activeCore = pipeline.get();
+
+        const char *depth = use_pipe6 ? "6-Stage" : "4-Stage";
         
         if (use_hmicro)
         {
-            //   --pipe --hmicro  -> Mode 3: Horizontal microprogrammed pipeline
-            cout << "\n[Mode: Horizontal Microprogrammed Pipelined CPU]\n";
-            pipe.isMicroprogrammed = true;
-            pipe.useVertical = false;
+            // Horizontal microprogrammed pipeline
+            cout << "\n[Mode: Horizontal Microprogrammed " << depth << " Pipelined CPU]\n";
+            activeCore->isMicroprogrammed = true;
+            activeCore->useVertical = false;
         }
         else if (use_vmicro)
         {
-            //   --pipe --vmicro  -> Mode 4: Vertical microprogrammed pipeline
-            cout << "\n[Mode: Vertical Microprogrammed Pipelined CPU]\n";
-            pipe.isMicroprogrammed = true;
-            pipe.useVertical = true;
+            // Vertical microprogrammed pipeline
+            cout << "\n[Mode: Vertical Microprogrammed " << depth << " Pipelined CPU]\n";
+            activeCore->isMicroprogrammed = true;
+            activeCore->useVertical = true;
         }
         else
         {
-            //   --pipe           -> Mode 2: Hardwired pipeline (no microprogramming)
-            cout << "\n[Mode: Hardwired 4-Stage Pipelined CPU]\n";
-            pipe.isMicroprogrammed = false;
-            pipe.useVertical = false;
+            // Hardwired pipeline (no microprogramming)
+            cout << "\n[Mode: Hardwired " << depth << " Pipelined CPU]\n";
+            activeCore->isMicroprogrammed = false;
+            activeCore->useVertical = false;
         }
     }
 
-    // Mode 1: Hardwired Single-Cycle CPU 
+    // Hardwired Single-Cycle CPU 
     // (Triggers if no flags are provided: ./simulator)
     else
     {
