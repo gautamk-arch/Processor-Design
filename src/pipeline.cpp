@@ -259,132 +259,169 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
                     {
                         // for st, operand B holds the value to store, so the address uses the immediate
                         int32_t Bop = u.get(ControlBit::MAR_WRITE) ? static_cast<int32_t>(ImmValue(inst.mod, inst.imm)) : B;
-                        aluResult res = cpu.alu.execute(op, A, Bop);
-                        if (res.flag_ERR)
-                            throw DivideByZero();
-                        stage[i].result = res.val;
+
+                        // FPU math
+                        if(inst.isFloat){
+                            fpuop f_op;
+                            switch (inst.op) {
+                                case Opcode::add: f_op = fpuop::FADD; break;
+                                case Opcode::sub: f_op = fpuop::FSUB; break;
+                                case Opcode::mul: f_op = fpuop::FMUL; break;
+                                case Opcode::div: f_op = fpuop::FDIV; break;
+                                default: throw IllegalInstruction(); 
+                            }
+                            fpuResult res = cpu.fpu.execute(f_op, A, Bop);
+                            if (res.flag_DIVZERO) throw DivideByZero();
+                            if (res.flag_INVALID) throw std::runtime_error("FPU Invalid Operation (NaN)");
+                            stage[i].result = res.val;
+                        }
+                        // ALU math
+                        else{
+                            aluResult res = cpu.alu.execute(op, A, Bop);
+                            if (res.flag_ERR)
+                                throw DivideByZero();
+                            stage[i].result = res.val;
+                        }
                     }
                 }
                 else
                 {
-                    switch (inst.op)
+                    // FPU math
+                    if (inst.isFloat && (inst.op == Opcode::add || inst.op == Opcode::sub || inst.op == Opcode::mul || inst.op == Opcode::div))
                     {
-                    case Opcode::add:
-                        stage[i].result = cpu.alu.execute(aluop::ADD, A, B).val;
-                        break;
-                    case Opcode::sub:
-                        stage[i].result = cpu.alu.execute(aluop::SUB, A, B).val;
-                        break;
-                    case Opcode::mul:
-                        stage[i].result = cpu.alu.execute(aluop::MUL, A, B).val;
-                        break;
-                    case Opcode::div:
-                    {
-                        aluResult res = cpu.alu.execute(aluop::DIV, A, B);
-                        if (res.flag_ERR)
-                            throw DivideByZero();
+                        fpuop f_op;
+                        if (inst.op == Opcode::add)f_op = fpuop::FADD;
+                        else if (inst.op ==Opcode::sub) f_op =fpuop::FSUB;
+                        else if (inst.op ==Opcode::mul) f_op =fpuop::FMUL;
+                        else f_op = fpuop::FDIV;
+                            
+                        fpuResult res = cpu.fpuexecute(f_op, A, B);
+                        if (res.flag_DIVZERO) throwDivideByZero();
+                        if (res.flag_INVALID) throwstd::runtime_error("FPUInvalid Operation (NaN)");
                         stage[i].result = res.val;
-                        break;
                     }
-                    case Opcode::mod:
-                    {
-                        aluResult res = cpu.alu.execute(aluop::MOD, A, B);
-                        if (res.flag_ERR)
-                            throw DivideByZero();
-                        stage[i].result = res.val;
-                        break;
-                    }
-                    case Opcode::cmp:
-                    {
-                        aluResult res = cpu.alu.execute(aluop::CMP, A, B);
-                        cpu.flag_E = res.flag_E;
-                        cpu.flag_GT = res.flag_GT;
-                        break;
-                    }
-                    case Opcode::and_op:
-                        stage[i].result = cpu.alu.execute(aluop::AND, A, B).val;
-                        break;
-                    case Opcode::or_op:
-                        stage[i].result = cpu.alu.execute(aluop::OR, A, B).val;
-                        break;
-                    case Opcode::not_op:
-                        stage[i].result = cpu.alu.execute(aluop::NOT, A, B).val;
-                        break;
-                    case Opcode::mov:
-                        stage[i].result = cpu.alu.execute(aluop::MOV, A, B).val;
-                        break;
-                    case Opcode::lsl:
-                        stage[i].result = cpu.alu.execute(aluop::LSL, A, B).val;
-                        break;
-                    case Opcode::lsr:
-                        stage[i].result = cpu.alu.execute(aluop::LSR, A, B).val;
-                        break;
-                    case Opcode::asr:
-                        stage[i].result = cpu.alu.execute(aluop::ASR, A, B).val;
-                        break;
-                    case Opcode::nop:
-                        break;
-                    case Opcode::ld:
-                        stage[i].result = cpu.alu.execute(aluop::ADD, A, B).val;
-                        break;
-                    case Opcode::st:
-                        stage[i].result = cpu.alu.execute(aluop::ADD, A, ImmValue(inst.mod, inst.imm)).val;
-                        break;
-                    case Opcode::b:
-                    case Opcode::call:
-                        cpu.pc = current_pc + (inst.imm << 2);
-                        branchTaken = true;
-                        break;
-                    case Opcode::beq:
-                        if (cpu.flag_E)
+
+                    // ALU math
+                    else{
+                        switch (inst.op)
                         {
+                        case Opcode::add:
+                            stage[i].result = cpu.alu.execute(aluop::ADD, A, B).val;
+                            break;
+                        case Opcode::sub:
+                            stage[i].result = cpu.alu.execute(aluop::SUB, A, B).val;
+                            break;
+                        case Opcode::mul:
+                            stage[i].result = cpu.alu.execute(aluop::MUL, A, B).val;
+                            break;
+                        case Opcode::div:
+                        {
+                            aluResult res = cpu.alu.execute(aluop::DIV, A, B);
+                            if (res.flag_ERR)
+                                throw DivideByZero();
+                            stage[i].result = res.val;
+                            break;
+                        }
+                        case Opcode::mod:
+                        {
+                            aluResult res = cpu.alu.execute(aluop::MOD, A, B);
+                            if (res.flag_ERR)
+                                throw DivideByZero();
+                            stage[i].result = res.val;
+                            break;
+                        }
+                        case Opcode::cmp:
+                        {
+                            aluResult res = cpu.alu.execute(aluop::CMP, A, B);
+                            cpu.flag_E = res.flag_E;
+                            cpu.flag_GT = res.flag_GT;
+                            break;
+                        }
+                        case Opcode::and_op:
+                            stage[i].result = cpu.alu.execute(aluop::AND, A, B).val;
+                            break;
+                        case Opcode::or_op:
+                            stage[i].result = cpu.alu.execute(aluop::OR, A, B).val;
+                            break;
+                        case Opcode::not_op:
+                            stage[i].result = cpu.alu.execute(aluop::NOT, A, B).val;
+                            break;
+                        case Opcode::mov:
+                            stage[i].result = cpu.alu.execute(aluop::MOV, A, B).val;
+                            break;
+                        case Opcode::lsl:
+                            stage[i].result = cpu.alu.execute(aluop::LSL, A, B).val;
+                            break;
+                        case Opcode::lsr:
+                            stage[i].result = cpu.alu.execute(aluop::LSR, A, B).val;
+                            break;
+                        case Opcode::asr:
+                            stage[i].result = cpu.alu.execute(aluop::ASR, A, B).val;
+                            break;
+                        case Opcode::nop:
+                            break;
+                        case Opcode::ld:
+                            stage[i].result = cpu.alu.execute(aluop::ADD, A, B).val;
+                            break;
+                        case Opcode::st:
+                            stage[i].result = cpu.alu.execute(aluop::ADD, A, ImmValue(inst.mod, inst.imm)).val;
+                            break;
+                        case Opcode::b:
+                        case Opcode::call:
                             cpu.pc = current_pc + (inst.imm << 2);
                             branchTaken = true;
-                        }
-                        break;
-                    case Opcode::bgt:
-                        if (cpu.flag_GT)
-                        {
-                            cpu.pc = current_pc + (inst.imm << 2);
+                            break;
+                        case Opcode::beq:
+                            if (cpu.flag_E)
+                            {
+                                cpu.pc = current_pc + (inst.imm << 2);
+                                branchTaken = true;
+                            }
+                            break;
+                        case Opcode::bgt:
+                            if (cpu.flag_GT)
+                            {
+                                cpu.pc = current_pc + (inst.imm << 2);
+                                branchTaken = true;
+                            }
+                            break;
+                        case Opcode::bland:
+                            if (cpu.flag_land)
+                            {
+                                cpu.pc = current_pc + (inst.imm << 2);
+                                branchTaken = true;
+                            }
+                            break;
+                        case Opcode::blor:
+                            if (cpu.flag_lor)
+                            {
+                                cpu.pc = current_pc + (inst.imm << 2);
+                                branchTaken = true;
+                            }
+                            break;
+                        case Opcode::blnot:
+                            if (cpu.flag_lnot)
+                            {
+                                cpu.pc = current_pc + (inst.imm << 2);
+                                branchTaken = true;
+                            }
+                            break;
+                        case Opcode::ret:
+                            cpu.pc = stage[i].a;
                             branchTaken = true;
+                            break;
+                        case Opcode::land:
+                            cpu.flag_land = cpu.alu.execute(aluop::LAND, A, B).flag_LAND;
+                            break;
+                        case Opcode::lor:
+                            cpu.flag_lor = cpu.alu.execute(aluop::LOR, A, B).flag_LOR;
+                            break;
+                        case Opcode::lnot:
+                            cpu.flag_lnot = cpu.alu.execute(aluop::LNOT, A, B).flag_LNOT;
+                            break;
+                        default:
+                            throw IllegalInstruction();
                         }
-                        break;
-                    case Opcode::bland:
-                        if (cpu.flag_land)
-                        {
-                            cpu.pc = current_pc + (inst.imm << 2);
-                            branchTaken = true;
-                        }
-                        break;
-                    case Opcode::blor:
-                        if (cpu.flag_lor)
-                        {
-                            cpu.pc = current_pc + (inst.imm << 2);
-                            branchTaken = true;
-                        }
-                        break;
-                    case Opcode::blnot:
-                        if (cpu.flag_lnot)
-                        {
-                            cpu.pc = current_pc + (inst.imm << 2);
-                            branchTaken = true;
-                        }
-                        break;
-                    case Opcode::ret:
-                        cpu.pc = stage[i].a;
-                        branchTaken = true;
-                        break;
-                    case Opcode::land:
-                        cpu.flag_land = cpu.alu.execute(aluop::LAND, A, B).flag_LAND;
-                        break;
-                    case Opcode::lor:
-                        cpu.flag_lor = cpu.alu.execute(aluop::LOR, A, B).flag_LOR;
-                        break;
-                    case Opcode::lnot:
-                        cpu.flag_lnot = cpu.alu.execute(aluop::LNOT, A, B).flag_LNOT;
-                        break;
-                    default:
-                        throw IllegalInstruction();
                     }
                 }
 
