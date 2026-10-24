@@ -295,9 +295,9 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
                         else if (inst.op ==Opcode::mul) f_op =fpuop::FMUL;
                         else f_op = fpuop::FDIV;
                             
-                        fpuResult res = cpu.fpuexecute(f_op, A, B);
-                        if (res.flag_DIVZERO) throwDivideByZero();
-                        if (res.flag_INVALID) throwstd::runtime_error("FPUInvalid Operation (NaN)");
+                        fpuResult res = cpu.fpu.execute(f_op, A, B);
+                        if (res.flag_DIVZERO) throw DivideByZero();
+                        if (res.flag_INVALID) throw std::runtime_error("FPUInvalid Operation (NaN)");
                         stage[i].result = res.val;
                     }
 
