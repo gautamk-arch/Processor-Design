@@ -65,7 +65,18 @@ public:
     Microprogramming();
     void reset();
 
+    // Every ISA instruction owns STEPS_PER_INSTRUCTION contiguous micro-words:
+    //   step 0 = EX, step 1 = MA, step 2 = RW   (MA and RW stay separate)
+    static constexpr std::size_t STEP_EX = 0;
+    static constexpr std::size_t STEP_MA = 1;
+    static constexpr std::size_t STEP_RW = 2;
+    static constexpr std::size_t STEPS_PER_INSTRUCTION = 3;
+
     std::size_t entryFor(Opcode opcode) const;
+    // micro-PC of (opcode, step) = entryFor(opcode) + step
+    std::size_t microPCFor(Opcode opcode, std::size_t step) const;
+    // control word of (opcode, step)
+    const MicroInstruction& fetchForStage(Opcode opcode, std::size_t step) const;
     const MicroInstruction& fetch(std::size_t microPC) const;
     std::size_t nextMicroPC(std::size_t microPC,
                             bool isMBranch = false) const;
