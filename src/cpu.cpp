@@ -93,123 +93,150 @@ void CPU::execute (Instruction inst){
     uint32_t current_pc = pc;
     pc += 4;
 
-    switch(inst.op){
-        // Arithmetic instructions
+    if (inst.isFloat){
+        fpuop f_op;
+        switch (inst.op){
         case Opcode::add:
-        regs[inst.rd] = alu.execute(aluop::ADD,A,B).val;
-        break;
+            f_op = fpuop::FADD;
+            break;
         case Opcode::sub:
-        regs[inst.rd] = alu.execute(aluop::SUB,A,B).val;
-        break;
+            f_op = fpuop::FSUB;
+            break;
         case Opcode::mul:
-        regs[inst.rd] = alu.execute(aluop::MUL,A,B).val;
-        break;
-        case Opcode::div: 
-        {
-        aluResult res = alu.execute(aluop::DIV,A,B);
-        if (res.flag_ERR) throw DivideByZero();
-        regs[inst.rd] = res.val; 
-        break;
-        }
-        case Opcode::mod: 
-        {
-        aluResult res = alu.execute(aluop::MOD,A,B);
-        if (res.flag_ERR) throw DivideByZero();
-        regs[inst.rd] = res.val; 
-        break;
-        }
-        // Compare instruction
-        case Opcode::cmp:
-        {
-        aluResult res = alu.execute(aluop::CMP,A,B);
-        flag_E = res.flag_E;
-        flag_GT = res.flag_GT;
-        break;
-        }
-        // Logical instructions
-        case Opcode::and_op: regs[inst.rd] = alu.execute(aluop::AND,A,B).val; break;
-        case Opcode::or_op: regs[inst.rd] = alu.execute(aluop::OR,A,B).val; break;
-        case Opcode::not_op: regs[inst.rd] = alu.execute(aluop::NOT,A,B).val ; break;
-
-        // Move instruction
-        case Opcode::mov: regs[inst.rd] = alu.execute(aluop::MOV,A,B).val ; break;
-
-        // Shift instructions
-        case Opcode::lsl: regs[inst.rd] = alu.execute(aluop::LSL,A,B).val ; break;
-        case Opcode::lsr: regs[inst.rd] = alu.execute(aluop::LSR,A,B).val ; break;
-        case Opcode::asr: regs[inst.rd] = alu.execute(aluop::ASR,A,B).val ; break;
-
-        // Nop instruction
-        case Opcode::nop: break;
-
-        // Load and store instructions. Assuming Little endian
-        case Opcode::ld:{
-            uint32_t addr = alu.execute(aluop::ADD,A,B).val;
-            checkMemoryAccess(addr);
-
-            if(inst.rs1==sp && addr>=stack_base) throw StackUnderflow();
-            regs[inst.rd] = (dataMem[addr])|(dataMem[addr+1]<<8)|(dataMem[addr+2]<<16)|(dataMem[addr+3]<<24);
+            f_op = fpuop::FMUL;
             break;
-        }
-        case Opcode::st:{
-            uint32_t addr = alu.execute(aluop::ADD,A,B).val;
-            checkMemoryAccess(addr);
-            if (inst.rs1==sp && addr<stack_limit) throw StackOverflow();
-            dataMem[addr] = regs[inst.rd] & 0xFF;
-            dataMem[addr+1] = (regs[inst.rd]>>8) & 0xFF;
-            dataMem[addr+2] = (regs[inst.rd]>>16) & 0xFF;
-            dataMem[addr+3] = (regs[inst.rd]>>24) & 0xFF;
+        case Opcode::div:
+            f_op = fpuop::FDIV;
             break;
-        }
-
-        // Branch instructions
-        case Opcode::b:
-            pc = current_pc + (inst.imm << 2);
-            break;
-        case Opcode::beq:
-            if(flag_E) pc = current_pc + (inst.imm << 2);
-            break;
-        case Opcode::bgt:
-            if(flag_GT) pc = current_pc + (inst.imm << 2);
-            break;
-        case Opcode::bland:
-            if(flag_land) pc = current_pc + (inst.imm << 2);
-            break;
-        case Opcode::blor:
-            if(flag_lor) pc = current_pc + (inst.imm << 2);
-            break;
-        case Opcode::blnot:
-            if(flag_lnot) pc = current_pc + (inst.imm << 2);
-            break;
-        
-        case Opcode::call:
-            regs[15] = pc;
-            pc = current_pc + (inst.imm << 2);
-            break;
-        case Opcode::ret:
-            pc = regs[15];
-            break;
-        case Opcode::land:
-        {
-            aluResult res = alu.execute(aluop::LAND,A,B);
-            flag_land = res.flag_LAND;
-            break;
-        }
-        case Opcode::lor:
-        {
-            aluResult res = alu.execute(aluop::LOR,A,B);
-            flag_lor = res.flag_LOR;
-            break;
-        }
-        case Opcode::lnot:
-        {
-            aluResult res = alu.execute(aluop::LNOT,A,B);
-            flag_lnot = res.flag_LNOT;
-            break;
-        }
 
         default:
-            throw IllegalInstruction(); // to handle opcodes from 21 to 31
+            throw IllegalInstruction();
+        }
+        fpuResult res = fpu.execute(f_op, A, B);
+        if (res.flag_DIVZERO) throw DivideByZero();
+        if (res.flag_INVALID) throw std::runtime_error("FPU Invalid Operation (NaN)");
+        regs[inst.rd] = res.val;
+    }
+
+    else{
+        switch(inst.op){
+            // Arithmetic instructions
+            case Opcode::add:
+            regs[inst.rd] = alu.execute(aluop::ADD,A,B).val;
+            break;
+            case Opcode::sub:
+            regs[inst.rd] = alu.execute(aluop::SUB,A,B).val;
+            break;
+            case Opcode::mul:
+            regs[inst.rd] = alu.execute(aluop::MUL,A,B).val;
+            break;
+            case Opcode::div: 
+            {
+            aluResult res = alu.execute(aluop::DIV,A,B);
+            if (res.flag_ERR) throw DivideByZero();
+            regs[inst.rd] = res.val; 
+            break;
+            }
+            case Opcode::mod: 
+            {
+            aluResult res = alu.execute(aluop::MOD,A,B);
+            if (res.flag_ERR) throw DivideByZero();
+            regs[inst.rd] = res.val; 
+            break;
+            }
+            // Compare instruction
+            case Opcode::cmp:
+            {
+            aluResult res = alu.execute(aluop::CMP,A,B);
+            flag_E = res.flag_E;
+            flag_GT = res.flag_GT;
+            break;
+            }
+            // Logical instructions
+            case Opcode::and_op: regs[inst.rd] = alu.execute(aluop::AND,A,B).val; break;
+            case Opcode::or_op: regs[inst.rd] = alu.execute(aluop::OR,A,B).val; break;
+            case Opcode::not_op: regs[inst.rd] = alu.execute(aluop::NOT,A,B).val ; break;
+    
+            // Move instruction
+            case Opcode::mov: regs[inst.rd] = alu.execute(aluop::MOV,A,B).val ; break;
+    
+            // Shift instructions
+            case Opcode::lsl: regs[inst.rd] = alu.execute(aluop::LSL,A,B).val ; break;
+            case Opcode::lsr: regs[inst.rd] = alu.execute(aluop::LSR,A,B).val ; break;
+            case Opcode::asr: regs[inst.rd] = alu.execute(aluop::ASR,A,B).val ; break;
+    
+            // Nop instruction
+            case Opcode::nop: break;
+    
+            // Load and store instructions. Assuming Little endian
+            case Opcode::ld:{
+                uint32_t addr = alu.execute(aluop::ADD,A,B).val;
+                checkMemoryAccess(addr);
+    
+                if(inst.rs1==sp && addr>=stack_base) throw StackUnderflow();
+                regs[inst.rd] = (dataMem[addr])|(dataMem[addr+1]<<8)|(dataMem[addr+2]<<16)|(dataMem[addr+3]<<24);
+                break;
+            }
+            case Opcode::st:{
+                uint32_t addr = alu.execute(aluop::ADD,A,B).val;
+                checkMemoryAccess(addr);
+                if (inst.rs1==sp && addr<stack_limit) throw StackOverflow();
+                dataMem[addr] = regs[inst.rd] & 0xFF;
+                dataMem[addr+1] = (regs[inst.rd]>>8) & 0xFF;
+                dataMem[addr+2] = (regs[inst.rd]>>16) & 0xFF;
+                dataMem[addr+3] = (regs[inst.rd]>>24) & 0xFF;
+                break;
+            }
+    
+            // Branch instructions
+            case Opcode::b:
+                pc = current_pc + (inst.imm << 2);
+                break;
+            case Opcode::beq:
+                if(flag_E) pc = current_pc + (inst.imm << 2);
+                break;
+            case Opcode::bgt:
+                if(flag_GT) pc = current_pc + (inst.imm << 2);
+                break;
+            case Opcode::bland:
+                if(flag_land) pc = current_pc + (inst.imm << 2);
+                break;
+            case Opcode::blor:
+                if(flag_lor) pc = current_pc + (inst.imm << 2);
+                break;
+            case Opcode::blnot:
+                if(flag_lnot) pc = current_pc + (inst.imm << 2);
+                break;
+            
+            case Opcode::call:
+                regs[15] = pc;
+                pc = current_pc + (inst.imm << 2);
+                break;
+            case Opcode::ret:
+                pc = regs[15];
+                break;
+            case Opcode::land:
+            {
+                aluResult res = alu.execute(aluop::LAND,A,B);
+                flag_land = res.flag_LAND;
+                break;
+            }
+            case Opcode::lor:
+            {
+                aluResult res = alu.execute(aluop::LOR,A,B);
+                flag_lor = res.flag_LOR;
+                break;
+            }
+            case Opcode::lnot:
+            {
+                aluResult res = alu.execute(aluop::LNOT,A,B);
+                flag_lnot = res.flag_LNOT;
+                break;
+            }
+    
+            default:
+                throw IllegalInstruction(); // to handle opcodes from 21 to 31
+        }
     }
     // StackGuard - to check inst directly  writes to sp
     if(inst.rd==sp){

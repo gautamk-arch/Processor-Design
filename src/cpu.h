@@ -2,6 +2,7 @@
 #include "isa.h"
 #include "exceptions.h"
 #include "alu.h"
+#include "fpu.h"
 #include <cstdint>
 #include <iostream>
 #include <vector>
@@ -21,6 +22,7 @@ class CPU
     template<size_t N> friend struct PipelinedCore;
 private:
     ALU alu;
+    FPU fpu;
     uint32_t pc;
     std::array<int32_t, no_of_reg> regs;
     bool flag_E;
