@@ -49,60 +49,63 @@ MicroInstruction Microprogramming::make(std::string label,
 
 std::vector<MicroInstruction>
 Microprogramming::makeInstructionProgram(Opcode opcode) {
-    // These are control-flow templates, not yet a complete electrical-level
-    // datapath microcode. They preserve the ISA operations present in cpu.cpp.
-    // The datapath-specific register enables / ALU command encoding need to be
-    // wired once the project's shared-bus datapath contract is finalized.
+    // Every ISA instruction gets STEPS_PER_INSTRUCTION micro-words, one for each pipeline step:
+    //   step 0 (EX) | step 1 (MA) | step 2 (RW)
+    // A stage reads only the word of its own step. What the bits mean in each step:
+    //
+    //   EX : ALU_RESULT_WRITE   aluResult = ALU(args, A, B)
+    //        IMMX_EN            ALU operand B is the immediate (address calculation of ld / st)
+    //        PC_WRITE           the PC changes (branch / call / ret); A_READ + PC_WRITE: pc <- A (ret)
+    //        FLAG_*_EN          with PC_WRITE: branch only if that flag is set
+    //                           without PC_WRITE: update that flag (cmp / land / lor / lnot)
+    //        args               ALU function, as an aluop value
+    //   MA : LD_RESULT_WRITE    MDR <- memory[MAR]                 (ld)
+    //        MAR_WRITE+MDR_WRITE  memory[MAR] <- store data        (st)
+    //   RW : REG_DATA_WRITE     write the destination register
+    //        ALU_RESULT_READ    ... with the ALU result
+    //        LD_RESULT_READ     ... with the loaded data (MDR)
     std::vector<MicroInstruction> code;
-    auto add = [&](const char* label) { code.push_back(make(label)); };
-
+    const char* baseLabel = "";
     switch (opcode) {
-        case Opcode::add:   add("madd"); break;
-        case Opcode::sub:   add("msub"); break;
-        case Opcode::mul:   add("mmul"); break;
-        case Opcode::div:   add("mdiv"); break;
-        case Opcode::mod:   add("mmod"); break;
-        case Opcode::cmp:   add("mcmp"); break;
-        case Opcode::and_op:add("mand"); break;
-        case Opcode::or_op: add("mor"); break;
-        case Opcode::not_op:add("mnot"); break;
-        case Opcode::mov:   add("mmov"); break;
-        case Opcode::lsl:   add("mlsl"); break;
-        case Opcode::lsr:   add("mlsr"); break;
-        case Opcode::asr:   add("masr"); break;
-        case Opcode::nop:   add("mnop"); break;
-        case Opcode::ld:    add("mload"); break;
-        case Opcode::st:    add("mstore"); break;
-        case Opcode::beq:   add("mbranchEqual"); break;
-        case Opcode::bgt:   add("mbranchGreater"); break;
-        case Opcode::b:     add("mbranch"); break;
-        case Opcode::call:  add("mcall"); break;
-        case Opcode::ret:   add("mreturn"); break;
-        case Opcode::land:  add("mland"); break;
-        case Opcode::lor:   add("mlor"); break;
-        case Opcode::lnot:  add("mlnot"); break;
-        case Opcode::bland: add("mbranchLand"); break;
-        case Opcode::blor:  add("mbranchLor"); break;
-        case Opcode::blnot: add("mbranchLnot"); break;
+        case Opcode::add:   baseLabel = "madd"; break;
+        case Opcode::sub:   baseLabel = "msub"; break;
+        case Opcode::mul:   baseLabel = "mmul"; break;
+        case Opcode::div:   baseLabel = "mdiv"; break;
+        case Opcode::mod:   baseLabel = "mmod"; break;
+        case Opcode::cmp:   baseLabel = "mcmp"; break;
+        case Opcode::and_op:baseLabel = "mand"; break;
+        case Opcode::or_op: baseLabel = "mor"; break;
+        case Opcode::not_op:baseLabel = "mnot"; break;
+        case Opcode::mov:   baseLabel = "mmov"; break;
+        case Opcode::lsl:   baseLabel = "mlsl"; break;
+        case Opcode::lsr:   baseLabel = "mlsr"; break;
+        case Opcode::asr:   baseLabel = "masr"; break;
+        case Opcode::nop:   baseLabel = "mnop"; break;
+        case Opcode::ld:    baseLabel = "mload"; break;
+        case Opcode::st:    baseLabel = "mstore"; break;
+        case Opcode::beq:   baseLabel = "mbranchEqual"; break;
+        case Opcode::bgt:   baseLabel = "mbranchGreater"; break;
+        case Opcode::b:     baseLabel = "mbranch"; break;
+        case Opcode::call:  baseLabel = "mcall"; break;
+        case Opcode::ret:   baseLabel = "mreturn"; break;
+        case Opcode::land:  baseLabel = "mland"; break;
+        case Opcode::lor:   baseLabel = "mlor"; break;
+        case Opcode::lnot:  baseLabel = "mlnot"; break;
+        case Opcode::bland: baseLabel = "mbranchLand"; break;
+        case Opcode::blor:  baseLabel = "mbranchLor"; break;
+        case Opcode::blnot: baseLabel = "mbranchLnot"; break;
         default:
             throw std::invalid_argument("Unknown SimpleRisc opcode");
     }
 
-    // ---- Control words for the pipelined core (ONE word per ISA instruction) ----
-    // The pipeline stages read these bits:
-    //   ALU_RESULT_WRITE : EX computes aluResult = ALU(args, A, B)
-    //   REG_DATA_WRITE   : MA/RW writes the result into rd
-    //   LD_RESULT_WRITE  : MA/RW loads memory[result]
-    //   MAR_WRITE        : MA/RW stores B to memory[result]   (EX uses imm as operand B)
-    //   PC_WRITE         : EX changes the PC (branch / call / ret)
-    //   A_READ + PC_WRITE: pc <- A   (ret)
-    //   FLAG_*_EN        : with PC_WRITE: branch only if that flag is set
-    //                      without PC_WRITE: update that flag (cmp / land / lor / lnot)
-    //   args             : ALU function, as an aluop value
-    auto wire = [&](std::size_t index,
+    code.push_back(make(std::string(baseLabel) + "_ex"));
+    code.push_back(make(std::string(baseLabel) + "_ma"));
+    code.push_back(make(std::string(baseLabel) + "_rw"));
+
+    auto wire = [&](std::size_t step,
                     std::initializer_list<ControlBit> bits,
                     std::uint16_t args = 0) {
-        MicroInstruction& m = code.at(index);
+        MicroInstruction& m = code.at(step);
         for (ControlBit bit : bits) m.set(bit);
         m.args = args & ((1U << ARGS_BITS) - 1U);
     };
@@ -121,53 +124,55 @@ Microprogramming::makeInstructionProgram(Opcode opcode) {
         case Opcode::lsl:
         case Opcode::lsr:
         case Opcode::asr:
-            wire(0, {ControlBit::ALU_RESULT_WRITE, ControlBit::REG_DATA_WRITE}, aluFn);
+            wire(STEP_EX, {ControlBit::ALU_RESULT_WRITE}, aluFn);
+            wire(STEP_RW, {ControlBit::REG_DATA_WRITE, ControlBit::ALU_RESULT_READ});
             break;
         case Opcode::cmp:
-            wire(0, {ControlBit::FLAG_E_EN, ControlBit::FLAG_GT_EN}, static_cast<std::uint16_t>(aluop::CMP));
+            wire(STEP_EX, {ControlBit::FLAG_E_EN, ControlBit::FLAG_GT_EN}, static_cast<std::uint16_t>(aluop::CMP));
             break;
         case Opcode::nop:
             break;
         case Opcode::ld:
-            wire(0, {ControlBit::ALU_RESULT_WRITE, ControlBit::LD_RESULT_WRITE,
-                     ControlBit::REG_DATA_WRITE}, static_cast<std::uint16_t>(aluop::ADD));
+            wire(STEP_EX, {ControlBit::ALU_RESULT_WRITE, ControlBit::IMMX_EN}, static_cast<std::uint16_t>(aluop::ADD)); // address = A + imm
+            wire(STEP_MA, {ControlBit::LD_RESULT_WRITE});                                                           // MDR <- memory[MAR]
+            wire(STEP_RW, {ControlBit::REG_DATA_WRITE, ControlBit::LD_RESULT_READ});                                // rd <- MDR
             break;
         case Opcode::st:
-            wire(0, {ControlBit::ALU_RESULT_WRITE, ControlBit::MAR_WRITE, ControlBit::MDR_WRITE},
-                 static_cast<std::uint16_t>(aluop::ADD));
+            wire(STEP_EX, {ControlBit::ALU_RESULT_WRITE, ControlBit::IMMX_EN}, static_cast<std::uint16_t>(aluop::ADD)); // address = A + imm
+            wire(STEP_MA, {ControlBit::MAR_WRITE, ControlBit::MDR_WRITE});                                          // memory[MAR] <- MDR
             break;
         case Opcode::b:
-            wire(0, {ControlBit::BRANCH_TARGET_EN, ControlBit::PC_WRITE});
+            wire(STEP_EX, {ControlBit::BRANCH_TARGET_EN, ControlBit::PC_WRITE});
             break;
         case Opcode::beq:
-            wire(0, {ControlBit::BRANCH_TARGET_EN, ControlBit::PC_WRITE, ControlBit::FLAG_E_EN});
+            wire(STEP_EX, {ControlBit::BRANCH_TARGET_EN, ControlBit::PC_WRITE, ControlBit::FLAG_E_EN});
             break;
         case Opcode::bgt:
-            wire(0, {ControlBit::BRANCH_TARGET_EN, ControlBit::PC_WRITE, ControlBit::FLAG_GT_EN});
+            wire(STEP_EX, {ControlBit::BRANCH_TARGET_EN, ControlBit::PC_WRITE, ControlBit::FLAG_GT_EN});
             break;
         case Opcode::bland:
-            wire(0, {ControlBit::BRANCH_TARGET_EN, ControlBit::PC_WRITE, ControlBit::FLAG_LAND_EN});
+            wire(STEP_EX, {ControlBit::BRANCH_TARGET_EN, ControlBit::PC_WRITE, ControlBit::FLAG_LAND_EN});
             break;
         case Opcode::blor:
-            wire(0, {ControlBit::BRANCH_TARGET_EN, ControlBit::PC_WRITE, ControlBit::FLAG_LOR_EN});
+            wire(STEP_EX, {ControlBit::BRANCH_TARGET_EN, ControlBit::PC_WRITE, ControlBit::FLAG_LOR_EN});
             break;
         case Opcode::blnot:
-            wire(0, {ControlBit::BRANCH_TARGET_EN, ControlBit::PC_WRITE, ControlBit::FLAG_LNOT_EN});
+            wire(STEP_EX, {ControlBit::BRANCH_TARGET_EN, ControlBit::PC_WRITE, ControlBit::FLAG_LNOT_EN});
             break;
         case Opcode::call:
-            wire(0, {ControlBit::PC_READ, ControlBit::BRANCH_TARGET_EN, ControlBit::PC_WRITE});
+            wire(STEP_EX, {ControlBit::PC_READ, ControlBit::BRANCH_TARGET_EN, ControlBit::PC_WRITE});
             break;
         case Opcode::ret:
-            wire(0, {ControlBit::A_READ, ControlBit::PC_WRITE});
+            wire(STEP_EX, {ControlBit::A_READ, ControlBit::PC_WRITE});
             break;
         case Opcode::land:
-            wire(0, {ControlBit::FLAG_LAND_EN}, static_cast<std::uint16_t>(aluop::LAND));
+            wire(STEP_EX, {ControlBit::FLAG_LAND_EN}, static_cast<std::uint16_t>(aluop::LAND));
             break;
         case Opcode::lor:
-            wire(0, {ControlBit::FLAG_LOR_EN}, static_cast<std::uint16_t>(aluop::LOR));
+            wire(STEP_EX, {ControlBit::FLAG_LOR_EN}, static_cast<std::uint16_t>(aluop::LOR));
             break;
         case Opcode::lnot:
-            wire(0, {ControlBit::FLAG_LNOT_EN}, static_cast<std::uint16_t>(aluop::LNOT));
+            wire(STEP_EX, {ControlBit::FLAG_LNOT_EN}, static_cast<std::uint16_t>(aluop::LNOT));
             break;
         default:
             break;
@@ -210,6 +215,8 @@ void Microprogramming::build() {
     for (std::size_t raw = 0; raw < programs_.size(); ++raw) {
         const Opcode opcode = static_cast<Opcode>(raw);
         auto body = makeInstructionProgram(opcode);
+         if (body.size() != STEPS_PER_INSTRUCTION)
+            throw std::logic_error("microprogram must have exactly one micro-word per step");
         // At the end of an ISA instruction, return to mloadIR (address 0).
         // The 10-bit branch target stores microinstruction indices, not bytes.
         body.back().setFetchSource(FetchSource::BRANCH_TARGET);
@@ -233,6 +240,17 @@ std::size_t Microprogramming::entryFor(Opcode opcode) const {
     if (raw >= entry_.size() || entry_[raw] == std::numeric_limits<std::size_t>::max())
         throw IllegalInstruction();   // unused opcode (27..31) or not built
     return entry_[raw];
+}
+
+std::size_t Microprogramming::microPCFor(Opcode opcode, std::size_t step) const {
+    const std::size_t entry = entryFor(opcode);   // throws IllegalInstruction for an unused opcode
+    if (step >= STEPS_PER_INSTRUCTION)
+        throw std::out_of_range("Pipeline step out of range for microprogram");
+    return entry + step;
+}
+
+const MicroInstruction& Microprogramming::fetchForStage(Opcode opcode, std::size_t step) const {
+    return fetch(microPCFor(opcode, step));
 }
 
 const MicroInstruction& Microprogramming::fetch(std::size_t microPC) const {

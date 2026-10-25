@@ -78,8 +78,7 @@ public:
     // control word of (opcode, step)
     const MicroInstruction& fetchForStage(Opcode opcode, std::size_t step) const;
     const MicroInstruction& fetch(std::size_t microPC) const;
-    std::size_t nextMicroPC(std::size_t microPC,
-                            bool isMBranch = false) const;
+    std::size_t nextMicroPC(std::size_t microPC, bool isMBranch = false) const;
     const MicroProgram& programFor(Opcode opcode) const;
     std::size_t romSize() const noexcept;
 
