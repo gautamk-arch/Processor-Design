@@ -251,9 +251,9 @@ std::size_t Microprogramming::nextMicroPC(std::size_t microPC, bool isMBranch) c
         case FetchSource::CONDITIONAL_BRANCH_RESULT:
             return isMBranch ? current.branchTarget : microPC + 1;
         case FetchSource::OPCODE_SWITCH:
-            // mswitch requires opcode-based dispatch; use entryFor(opcode) once
-            // the caller has decoded the opcode from the IR register.
-            throw std::logic_error("OPCODE_SWITCH needs opcode dispatch; call entryFor(opcode)");
+            // The micro-PC stays on mswitch; the caller resolves the jump with
+            // entryFor(opcode) once the opcode has been decoded from the IR.
+            return microPC;
     }
     throw std::logic_error("Invalid micro-fetch mux selection");
 }
