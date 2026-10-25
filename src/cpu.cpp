@@ -94,6 +94,17 @@ void CPU::execute (Instruction inst){
     pc += 4;
 
     if (inst.isFloat){
+        // FPU Comparison (cmpf)
+        if (inst.op == Opcode::cmp) {
+            fpuResult res = fpu.execute(fpuop::FCMP, A, B);
+            if (res.flag_INVALID) throw std::runtime_error("FPU Invalid Operation (NaN)");
+            
+            flag_E = res.flag_E;
+            flag_GT = res.flag_GT;
+            
+            return; // we return here because we do not want to write to regs[inst.rd] or trigger the stack guard for a comparison instruction. 
+        }
+
         fpuop f_op;
         switch (inst.op){
         case Opcode::add:

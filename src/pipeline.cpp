@@ -299,20 +299,32 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
                     }
                     else if (anyFlag)
                     {
-                        // cmp / land / lor / lnot: only flags are written
-
-                        aluResult res = cpu.alu.execute(op, A, B);
-                        if (u.get(ControlBit::FLAG_E_EN) || u.get(ControlBit::FLAG_GT_EN))
-                        {
-                            cpu.flag_E = res.flag_E;
-                            cpu.flag_GT = res.flag_GT;
+                        // FPU Comparison (cmp)
+                        if (inst.isFloat && inst.op == Opcode::cmp) {
+                            fpuResult res = cpu.fpu.execute(fpuop::FCMP, A, B);
+                            if (res.flag_INVALID) throw std::runtime_error("FPU Invalid Operation (NaN)");
+                            
+                            if (u.get(ControlBit::FLAG_E_EN) || u.get(ControlBit::FLAG_GT_EN)) {
+                                cpu.flag_E = res.flag_E;
+                                cpu.flag_GT = res.flag_GT;
+                            }
                         }
-                        if (u.get(ControlBit::FLAG_LAND_EN))
-                            cpu.flag_land = res.flag_LAND;
-                        if (u.get(ControlBit::FLAG_LOR_EN))
-                            cpu.flag_lor = res.flag_LOR;
-                        if (u.get(ControlBit::FLAG_LNOT_EN))
-                            cpu.flag_lnot = res.flag_LNOT;
+                        // ALU Comparison (cmp / land / lor / lnot)
+
+                        else{
+                            aluResult res = cpu.alu.execute(op, A, B);
+                            if (u.get(ControlBit::FLAG_E_EN) || u.get(ControlBit::FLAG_GT_EN))
+                            {
+                                cpu.flag_E = res.flag_E;
+                                cpu.flag_GT = res.flag_GT;
+                            }
+                            if (u.get(ControlBit::FLAG_LAND_EN))
+                                cpu.flag_land = res.flag_LAND;
+                            if (u.get(ControlBit::FLAG_LOR_EN))
+                                cpu.flag_lor = res.flag_LOR;
+                            if (u.get(ControlBit::FLAG_LNOT_EN))
+                                cpu.flag_lnot = res.flag_LNOT;
+                        }
                     }
                     else if (u.get(ControlBit::ALU_RESULT_WRITE))
                     {
@@ -346,18 +358,26 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
                 else
                 {
                     // FPU math
-                    if (inst.isFloat && (inst.op == Opcode::add || inst.op == Opcode::sub || inst.op == Opcode::mul || inst.op == Opcode::div))
+                    if (inst.isFloat && (inst.op == Opcode::add || inst.op == Opcode::sub || inst.op == Opcode::mul || inst.op == Opcode::div || inst.op == Opcode::cmp))
                     {
-                        fpuop f_op;
-                        if (inst.op == Opcode::add)f_op = fpuop::FADD;
-                        else if (inst.op ==Opcode::sub) f_op =fpuop::FSUB;
-                        else if (inst.op ==Opcode::mul) f_op =fpuop::FMUL;
-                        else f_op = fpuop::FDIV;
-                            
-                        fpuResult res = cpu.fpu.execute(f_op, A, B);
-                        if (res.flag_DIVZERO) throw DivideByZero();
-                        if (res.flag_INVALID) throw std::runtime_error("FPUInvalid Operation (NaN)");
-                        stage[i].result = res.val;
+                        if (inst.op == Opcode::cmp) {
+                            fpuResult res = cpu.fpu.execute(fpuop::FCMP, A, B);
+                            if (res.flag_INVALID) throw std::runtime_error("FPU Invalid Operation (NaN)");
+                            cpu.flag_E = res.flag_E;
+                            cpu.flag_GT = res.flag_GT;
+                        }
+                        else{
+                            fpuop f_op;
+                            if (inst.op == Opcode::add)f_op = fpuop::FADD;
+                            else if (inst.op ==Opcode::sub) f_op =fpuop::FSUB;
+                            else if (inst.op ==Opcode::mul) f_op =fpuop::FMUL;
+                            else f_op = fpuop::FDIV;
+                                
+                            fpuResult res = cpu.fpu.execute(f_op, A, B);
+                            if (res.flag_DIVZERO) throw DivideByZero();
+                            if (res.flag_INVALID) throw std::runtime_error("FPUInvalid Operation (NaN)");
+                            stage[i].result = res.val;
+                        }
                     }
 
                     // ALU math
