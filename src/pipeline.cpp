@@ -107,7 +107,7 @@ bool hasDataHazard(const typename PipelinedCore<N>::Slot *stage, int readStage, 
         if (reg == -1)
             continue;
         int p = findProducer<N>(stage, exStage, writeStage, reg);
-        if (p != -1 && stage[p].inst.op == Opcode::ld && p < memStage - 1)
+        if (p != -1 && stage[p].inst.op == Opcode::ld && p < memStage)
             return true; // stall
     }
     return false;
