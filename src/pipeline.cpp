@@ -163,8 +163,20 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
             // MA1
             if (currentStageNum == marStage && stage[i].valid)
             {
-                bool isLoadOp = isMicroprogrammed ? stage[i].uInst.get(ControlBit::LD_RESULT_WRITE) : (stage[i].inst.op == Opcode::ld);
-                bool isStoreOp = isMicroprogrammed ? stage[i].uInst.get(ControlBit::MAR_WRITE) : (stage[i].inst.op == Opcode::st);
+                bool isLoadOp, isStoreOp;
+                
+                // Fetch the MA step micro-word
+                if (isMicroprogrammed) {
+                    const MicroInstruction &u = useVertical 
+                        ? vROM.fetchForStage(stage[i].inst.op, Microprogramming::STEP_MA)
+                        : hROM.fetchForStage(stage[i].inst.op, Microprogramming::STEP_MA);
+                    isLoadOp = u.get(ControlBit::LD_RESULT_WRITE);
+                    isStoreOp = u.get(ControlBit::MAR_WRITE);
+                } else {
+                    isLoadOp = (stage[i].inst.op == Opcode::ld);
+                    isStoreOp = (stage[i].inst.op == Opcode::st);
+                }
+
                 if (isLoadOp || isStoreOp)
                 {
                     stage[i].mar = stage[i].result; // MAR <- ALU result (effective address)
@@ -194,8 +206,17 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
                 Instruction inst = stage[i].inst;
                 uint32_t addr = stage[i].mar;
 
-                bool executeLoad = isMicroprogrammed ? stage[i].uInst.get(ControlBit::LD_RESULT_WRITE) : (inst.op == Opcode::ld);
-                bool executeStore = isMicroprogrammed ? stage[i].uInst.get(ControlBit::MAR_WRITE) : (inst.op == Opcode::st);
+                bool executeLoad, executeStore;
+
+                // Fetch the MA step micro-word dynamically
+                if (isMicroprogrammed) {
+                    const MicroInstruction &u = useVertical ? vROM.fetchForStage(inst.op, Microprogramming::STEP_MA): hROM.fetchForStage(inst.op, Microprogramming::STEP_MA);
+                    executeLoad = u.get(ControlBit::LD_RESULT_WRITE);
+                    executeStore = u.get(ControlBit::MAR_WRITE);
+                } else {
+                    executeLoad = (inst.op == Opcode::ld);
+                    executeStore = (inst.op == Opcode::st);
+                }
                 if (executeLoad)
                 {
                     // MDR <- memory[MAR]
@@ -217,7 +238,17 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
             if (currentStageNum == writeStage && stage[i].valid)
             {
                 Instruction inst = stage[i].inst;
-                bool executeWrite = isMicroprogrammed ? stage[i].uInst.get(ControlBit::REG_DATA_WRITE) : writesRegister(inst, inst.rd);
+                bool executeWrite;
+                
+                // Fetch the RW step micro-word
+                if (isMicroprogrammed) {
+                    const MicroInstruction &u = useVertical 
+                        ? vROM.fetchForStage(inst.op, Microprogramming::STEP_RW)
+                        : hROM.fetchForStage(inst.op, Microprogramming::STEP_RW);
+                    executeWrite = u.get(ControlBit::REG_DATA_WRITE);
+                } else {
+                    executeWrite = writesRegister(inst, inst.rd);
+                }
                 if (inst.op == Opcode::call)
                     cpu.regs[ra] = stage[i].pc + 4;
                 else if (executeWrite)
@@ -249,7 +280,7 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
 
                 if (isMicroprogrammed)
                 {
-                    const MicroInstruction &u = stage[i].uInst;
+                    const MicroInstruction &u = useVertical ? vROM.fetchForStage(inst.op, Microprogramming::STEP_EX): hROM.fetchForStage(inst.op, Microprogramming::STEP_EX);
                     const bool anyFlag = u.get(ControlBit::FLAG_E_EN) || u.get(ControlBit::FLAG_GT_EN) || u.get(ControlBit::FLAG_LAND_EN) || u.get(ControlBit::FLAG_LOR_EN) || u.get(ControlBit::FLAG_LNOT_EN);
                     const aluop op = static_cast<aluop>(u.args); // ALU function lives in args
 
@@ -501,21 +532,6 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
                     forwardInto(srcA, stage[i].a);
                     forwardInto(srcB, stage[i].b);
                     forwardInto(srcStore, stage[i].storeVal);
-                    
-                    if (isMicroprogrammed)
-                    {
-                        // One control word per ISA instruction, looked up be opcode.
-                        // Both horizontal and vertical control stores hand back the same MicroInstruction type.
-
-                        if(useVertical){
-                            // Vertical: compact encoded fields -> decoder -> flat control bits
-                            stage[i].uInst = vROM.fetchDecoded(vROM.entryFor(inst.op));
-                        }
-                        else{
-                            // Horizontal: control bits read straight out of the control store.
-                            stage[i].uInst = hROM.fetch(hROM.entryFor(inst.op));
-                        }
-                    }
                 }
             }
 
@@ -540,8 +556,6 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
                     stage[0].b = 0;
                     stage[0].result = 0;
                     stage[0].storeVal = 0;
-                    if (isMicroprogrammed)
-                        stage[0].uInst = MicroInstruction{};
                     cpu.pc += 4;
                 }
                 else

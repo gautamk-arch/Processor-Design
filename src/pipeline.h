@@ -41,7 +41,6 @@ struct PipelinedCore : PipelineBase
         uint32_t mar = 0;
         uint32_t mdr = 0;
         std::exception_ptr fault;
-        MicroInstruction uInst;
     };
     Slot stage[N];
     Microprogramming hROM;  // horizontal control store (wide control word)
