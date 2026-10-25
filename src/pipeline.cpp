@@ -8,7 +8,7 @@ static const char *opNames[] = {
     "add", "sub", "mul", "div", "mod", "cmp", "and", "or", "not", "mov", "lsl", "lsr", "asr",
     "nop", "ld", "st", "beq", "bgt", "b", "call", "ret", "land", "lor", "lnot", "bland", "blor", "blnot"};
 
-bool writesRegister(const Instruction &inst, int reg)   // Checks whether the given instruction writes into the register
+bool writesRegister(const Instruction &inst, int reg)
 {
     if (reg < 0)
         return false;
@@ -35,9 +35,16 @@ bool writesRegister(const Instruction &inst, int reg)   // Checks whether the gi
     }
 }
 
-static void getSources(const Instruction &inst, int &srcA, int &srcB, int &srcStore)    // finds the source register for instructions. Prevents unnecessary stalls, false hazards and wrong forwarding.
+template <size_t N>
+bool hasDataHazard(const typename PipelinedCore<N>::Slot *stage, int readStage, int writeStage)
 {
-    srcA = srcB = srcStore = -1;    // srcA = rs1, srcB = rs2 (if used), srcStore = register that contains value to be stored in case of store operation i.e rd
+    int readIdx = readStage - 1;
+    if (!stage[readIdx].valid)
+        return false;
+
+    const Instruction &inst = stage[readIdx].inst;
+    int r1 = -1, r2 = -1;
+
     switch (inst.op)
     {
     case Opcode::add:
@@ -53,68 +60,44 @@ static void getSources(const Instruction &inst, int &srcA, int &srcB, int &srcSt
     case Opcode::asr:
     case Opcode::land:
     case Opcode::lor:
-        srcA = inst.rs1;
+        r1 = inst.rs1;
         if (!inst.isImm)
-            srcB = inst.rs2;
+            r2 = inst.rs2;
         break;
     case Opcode::lnot:
     case Opcode::ld:
-        srcA = inst.rs1;
+        r1 = inst.rs1;
         break;
     case Opcode::not_op:
     case Opcode::mov:
         if (!inst.isImm)
-            srcB = inst.rs2;
+            r2 = inst.rs2;
         break;
     case Opcode::st:
-        srcA = inst.rs1;
-        srcStore = inst.rd;
+        r1 = inst.rs1;
+        r2 = inst.rd;
         break;
     case Opcode::ret:
-        srcA = ra;
+        r1 = ra;
         break;
     default:
         break;
     }
-}
 
-// Finds the youngest in-flight instruction that will write 'reg'.
-// "In flight" = already past EX but not yet written back: slots exStage .. writeStage-1 (0-based) at the moment OF is evaluated. A lower slot index is a younger instruction, so scanning upwards returns the youngest writer first -- the one the consumer must see.
-// Returns -1 when no in-flight instruction writes 'reg' (the register file is already up to date).
-template <size_t N>
-static int findProducer(const typename PipelinedCore<N>::Slot *stage, int exStage, int writeStage, int reg)
-{
-    for (int idx = exStage; idx < writeStage; ++idx)
-        if (stage[idx].valid && writesRegister(stage[idx].inst, reg))
-            return idx;
-    return -1;
-}
-
-template <size_t N>
-bool hasDataHazard(const typename PipelinedCore<N>::Slot *stage, int readStage, int exStage, int memStage, int writeStage)
-{
-    int readIdx = readStage - 1;
-    if (!stage[readIdx].valid)
-        return false;
-
-    int srcA, srcB, srcStore;
-    getSources(stage[readIdx].inst, srcA, srcB, srcStore);
-
-    // Every ALU result can be forwarded, so the only RAW hazard left is a load whose data is not ready yet. Loaded data exists once the load has passed the memory stage, i.e. it sits in a slot with index >= memStage. Until then the consumer has to wait.
-    const int srcs[3] = {srcA, srcB, srcStore};
-    for (int reg : srcs)
+    for (int i = readStage; i < writeStage; ++i)
     {
-        if (reg == -1)
-            continue;
-        int p = findProducer<N>(stage, exStage, writeStage, reg);
-        if (p != -1 && stage[p].inst.op == Opcode::ld && p < memStage)
-            return true; // stall
+        if (stage[i].valid)
+        {
+            if ((r1 != -1 && writesRegister(stage[i].inst, r1)) ||
+                (r2 != -1 && writesRegister(stage[i].inst, r2)))
+                return true;
+        }
     }
     return false;
 }
 
 template <size_t N>
-bool PipelinedCore<N>::isDone(const CPU &cpu) const // check if all instructions are executed
+bool PipelinedCore<N>::isDone(const CPU &cpu) const
 {
     if (cpu.pc < cpu.instruction_limit)
         return false;
@@ -125,30 +108,19 @@ bool PipelinedCore<N>::isDone(const CPU &cpu) const // check if all instructions
 }
 
 template <size_t N>
-void PipelinedCore<N>::run(CPU &cpu)    // run the program
+void PipelinedCore<N>::run(CPU &cpu)
 {
     while (!isDone(cpu))
         step(cpu);
-
-        // To display total count of stalls, flushes and CPI
-        cout << "\nExecution stopped.\n";
-        cout << "--- Pipeline Execution Summary ---\n";
-        cout << "Total Cycles       : " << cycle_count << "\n";
-        cout << "Total Instructions : " << instruction_count << "\n";
-        cout << "Total Stalls       : " << stall_count << "\n";
-        cout << "Total Flushes      : " << flush_count << "\n";
-        
-        double cpi = (instruction_count > 0) ? static_cast<double>(cycle_count) / instruction_count : 0.0;
-        cout << "Final CPI          : " << std::fixed << std::setprecision(2) << cpi << "\n";
+    cout << "Execution stopped.\n";
 }
 
 template <size_t N>
-void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
+void PipelinedCore<N>::step(CPU &cpu)
 {
     if (isDone(cpu))
         return;
-        
-    bool stall = false; // per cycle flag set by OF and later read by IF in same pass
+    bool stall = false;
 
     try
     {
@@ -156,9 +128,7 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
         {
             int currentStageNum = i + 1;
 
-            // --------------------------------------
-            // ----------- MA / RW stage ------------
-            // --------------------------------------
+            // MA / RW stage
 
             if (currentStageNum == memStage && stage[i].valid)
             {
@@ -209,9 +179,7 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
                 continue;
             }
 
-            // ------------------------------------
-            // ------------ EX stage --------------
-            // ------------------------------------
+            // EX stage
 
             if (currentStageNum == exStage && stage[i].valid)
             {
@@ -223,15 +191,21 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
                 if (isMicroprogrammed)
                 {
                     const MicroInstruction &u = stage[i].uInst;
-                    const bool anyFlag = u.get(ControlBit::FLAG_E_EN) || u.get(ControlBit::FLAG_GT_EN) || u.get(ControlBit::FLAG_LAND_EN) || u.get(ControlBit::FLAG_LOR_EN) || u.get(ControlBit::FLAG_LNOT_EN);
+                    const bool anyFlag = u.get(ControlBit::FLAG_E_EN) || u.get(ControlBit::FLAG_GT_EN) ||
+                                         u.get(ControlBit::FLAG_LAND_EN) || u.get(ControlBit::FLAG_LOR_EN) ||
+                                         u.get(ControlBit::FLAG_LNOT_EN);
                     const aluop op = static_cast<aluop>(u.args); // ALU function lives in args
 
                     if (u.get(ControlBit::PC_WRITE))
                     {
                         // b / beq / bgt / bland / blor / blnot / call / ret.
                         // A flag-enable bit next to PC_WRITE means "only if that flag is set".
-                        bool take = !anyFlag || (u.get(ControlBit::FLAG_E_EN) && cpu.flag_E) || (u.get(ControlBit::FLAG_GT_EN) && cpu.flag_GT) || (u.get(ControlBit::FLAG_LAND_EN) && cpu.flag_land) || (u.get(ControlBit::FLAG_LOR_EN) && cpu.flag_lor) || (u.get(ControlBit::FLAG_LNOT_EN) && cpu.flag_lnot);
-
+                        bool take = !anyFlag ||
+                                    (u.get(ControlBit::FLAG_E_EN) && cpu.flag_E) ||
+                                    (u.get(ControlBit::FLAG_GT_EN) && cpu.flag_GT) ||
+                                    (u.get(ControlBit::FLAG_LAND_EN) && cpu.flag_land) ||
+                                    (u.get(ControlBit::FLAG_LOR_EN) && cpu.flag_lor) ||
+                                    (u.get(ControlBit::FLAG_LNOT_EN) && cpu.flag_lnot);
                         if (take)
                         {
                             // A_READ + PC_WRITE = pc <- A (ret); otherwise pc <- branch target
@@ -259,169 +233,132 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
                     {
                         // for st, operand B holds the value to store, so the address uses the immediate
                         int32_t Bop = u.get(ControlBit::MAR_WRITE) ? static_cast<int32_t>(ImmValue(inst.mod, inst.imm)) : B;
-
-                        // FPU math
-                        if(inst.isFloat){
-                            fpuop f_op;
-                            switch (inst.op) {
-                                case Opcode::add: f_op = fpuop::FADD; break;
-                                case Opcode::sub: f_op = fpuop::FSUB; break;
-                                case Opcode::mul: f_op = fpuop::FMUL; break;
-                                case Opcode::div: f_op = fpuop::FDIV; break;
-                                default: throw IllegalInstruction(); 
-                            }
-                            fpuResult res = cpu.fpu.execute(f_op, A, Bop);
-                            if (res.flag_DIVZERO) throw DivideByZero();
-                            if (res.flag_INVALID) throw std::runtime_error("FPU Invalid Operation (NaN)");
-                            stage[i].result = res.val;
-                        }
-                        // ALU math
-                        else{
-                            aluResult res = cpu.alu.execute(op, A, Bop);
-                            if (res.flag_ERR)
-                                throw DivideByZero();
-                            stage[i].result = res.val;
-                        }
+                        aluResult res = cpu.alu.execute(op, A, Bop);
+                        if (res.flag_ERR)
+                            throw DivideByZero();
+                        stage[i].result = res.val;
                     }
                 }
                 else
                 {
-                    // FPU math
-                    if (inst.isFloat && (inst.op == Opcode::add || inst.op == Opcode::sub || inst.op == Opcode::mul || inst.op == Opcode::div))
+                    switch (inst.op)
                     {
-                        fpuop f_op;
-                        if (inst.op == Opcode::add)f_op = fpuop::FADD;
-                        else if (inst.op ==Opcode::sub) f_op =fpuop::FSUB;
-                        else if (inst.op ==Opcode::mul) f_op =fpuop::FMUL;
-                        else f_op = fpuop::FDIV;
-                            
-                        fpuResult res = cpu.fpu.execute(f_op, A, B);
-                        if (res.flag_DIVZERO) throw DivideByZero();
-                        if (res.flag_INVALID) throw std::runtime_error("FPUInvalid Operation (NaN)");
+                    case Opcode::add:
+                        stage[i].result = cpu.alu.execute(aluop::ADD, A, B).val;
+                        break;
+                    case Opcode::sub:
+                        stage[i].result = cpu.alu.execute(aluop::SUB, A, B).val;
+                        break;
+                    case Opcode::mul:
+                        stage[i].result = cpu.alu.execute(aluop::MUL, A, B).val;
+                        break;
+                    case Opcode::div:
+                    {
+                        aluResult res = cpu.alu.execute(aluop::DIV, A, B);
+                        if (res.flag_ERR)
+                            throw DivideByZero();
                         stage[i].result = res.val;
+                        break;
                     }
-
-                    // ALU math
-                    else{
-                        switch (inst.op)
+                    case Opcode::mod:
+                    {
+                        aluResult res = cpu.alu.execute(aluop::MOD, A, B);
+                        if (res.flag_ERR)
+                            throw DivideByZero();
+                        stage[i].result = res.val;
+                        break;
+                    }
+                    case Opcode::cmp:
+                    {
+                        aluResult res = cpu.alu.execute(aluop::CMP, A, B);
+                        cpu.flag_E = res.flag_E;
+                        cpu.flag_GT = res.flag_GT;
+                        break;
+                    }
+                    case Opcode::and_op:
+                        stage[i].result = cpu.alu.execute(aluop::AND, A, B).val;
+                        break;
+                    case Opcode::or_op:
+                        stage[i].result = cpu.alu.execute(aluop::OR, A, B).val;
+                        break;
+                    case Opcode::not_op:
+                        stage[i].result = cpu.alu.execute(aluop::NOT, A, B).val;
+                        break;
+                    case Opcode::mov:
+                        stage[i].result = cpu.alu.execute(aluop::MOV, A, B).val;
+                        break;
+                    case Opcode::lsl:
+                        stage[i].result = cpu.alu.execute(aluop::LSL, A, B).val;
+                        break;
+                    case Opcode::lsr:
+                        stage[i].result = cpu.alu.execute(aluop::LSR, A, B).val;
+                        break;
+                    case Opcode::asr:
+                        stage[i].result = cpu.alu.execute(aluop::ASR, A, B).val;
+                        break;
+                    case Opcode::nop:
+                        break;
+                    case Opcode::ld:
+                        stage[i].result = cpu.alu.execute(aluop::ADD, A, B).val;
+                        break;
+                    case Opcode::st:
+                        stage[i].result = cpu.alu.execute(aluop::ADD, A, ImmValue(inst.mod, inst.imm)).val;
+                        break;
+                    case Opcode::b:
+                    case Opcode::call:
+                        cpu.pc = current_pc + (inst.imm << 2);
+                        branchTaken = true;
+                        break;
+                    case Opcode::beq:
+                        if (cpu.flag_E)
                         {
-                        case Opcode::add:
-                            stage[i].result = cpu.alu.execute(aluop::ADD, A, B).val;
-                            break;
-                        case Opcode::sub:
-                            stage[i].result = cpu.alu.execute(aluop::SUB, A, B).val;
-                            break;
-                        case Opcode::mul:
-                            stage[i].result = cpu.alu.execute(aluop::MUL, A, B).val;
-                            break;
-                        case Opcode::div:
-                        {
-                            aluResult res = cpu.alu.execute(aluop::DIV, A, B);
-                            if (res.flag_ERR)
-                                throw DivideByZero();
-                            stage[i].result = res.val;
-                            break;
-                        }
-                        case Opcode::mod:
-                        {
-                            aluResult res = cpu.alu.execute(aluop::MOD, A, B);
-                            if (res.flag_ERR)
-                                throw DivideByZero();
-                            stage[i].result = res.val;
-                            break;
-                        }
-                        case Opcode::cmp:
-                        {
-                            aluResult res = cpu.alu.execute(aluop::CMP, A, B);
-                            cpu.flag_E = res.flag_E;
-                            cpu.flag_GT = res.flag_GT;
-                            break;
-                        }
-                        case Opcode::and_op:
-                            stage[i].result = cpu.alu.execute(aluop::AND, A, B).val;
-                            break;
-                        case Opcode::or_op:
-                            stage[i].result = cpu.alu.execute(aluop::OR, A, B).val;
-                            break;
-                        case Opcode::not_op:
-                            stage[i].result = cpu.alu.execute(aluop::NOT, A, B).val;
-                            break;
-                        case Opcode::mov:
-                            stage[i].result = cpu.alu.execute(aluop::MOV, A, B).val;
-                            break;
-                        case Opcode::lsl:
-                            stage[i].result = cpu.alu.execute(aluop::LSL, A, B).val;
-                            break;
-                        case Opcode::lsr:
-                            stage[i].result = cpu.alu.execute(aluop::LSR, A, B).val;
-                            break;
-                        case Opcode::asr:
-                            stage[i].result = cpu.alu.execute(aluop::ASR, A, B).val;
-                            break;
-                        case Opcode::nop:
-                            break;
-                        case Opcode::ld:
-                            stage[i].result = cpu.alu.execute(aluop::ADD, A, B).val;
-                            break;
-                        case Opcode::st:
-                            stage[i].result = cpu.alu.execute(aluop::ADD, A, ImmValue(inst.mod, inst.imm)).val;
-                            break;
-                        case Opcode::b:
-                        case Opcode::call:
                             cpu.pc = current_pc + (inst.imm << 2);
                             branchTaken = true;
-                            break;
-                        case Opcode::beq:
-                            if (cpu.flag_E)
-                            {
-                                cpu.pc = current_pc + (inst.imm << 2);
-                                branchTaken = true;
-                            }
-                            break;
-                        case Opcode::bgt:
-                            if (cpu.flag_GT)
-                            {
-                                cpu.pc = current_pc + (inst.imm << 2);
-                                branchTaken = true;
-                            }
-                            break;
-                        case Opcode::bland:
-                            if (cpu.flag_land)
-                            {
-                                cpu.pc = current_pc + (inst.imm << 2);
-                                branchTaken = true;
-                            }
-                            break;
-                        case Opcode::blor:
-                            if (cpu.flag_lor)
-                            {
-                                cpu.pc = current_pc + (inst.imm << 2);
-                                branchTaken = true;
-                            }
-                            break;
-                        case Opcode::blnot:
-                            if (cpu.flag_lnot)
-                            {
-                                cpu.pc = current_pc + (inst.imm << 2);
-                                branchTaken = true;
-                            }
-                            break;
-                        case Opcode::ret:
-                            cpu.pc = stage[i].a;
-                            branchTaken = true;
-                            break;
-                        case Opcode::land:
-                            cpu.flag_land = cpu.alu.execute(aluop::LAND, A, B).flag_LAND;
-                            break;
-                        case Opcode::lor:
-                            cpu.flag_lor = cpu.alu.execute(aluop::LOR, A, B).flag_LOR;
-                            break;
-                        case Opcode::lnot:
-                            cpu.flag_lnot = cpu.alu.execute(aluop::LNOT, A, B).flag_LNOT;
-                            break;
-                        default:
-                            throw IllegalInstruction();
                         }
+                        break;
+                    case Opcode::bgt:
+                        if (cpu.flag_GT)
+                        {
+                            cpu.pc = current_pc + (inst.imm << 2);
+                            branchTaken = true;
+                        }
+                        break;
+                    case Opcode::bland:
+                        if (cpu.flag_land)
+                        {
+                            cpu.pc = current_pc + (inst.imm << 2);
+                            branchTaken = true;
+                        }
+                        break;
+                    case Opcode::blor:
+                        if (cpu.flag_lor)
+                        {
+                            cpu.pc = current_pc + (inst.imm << 2);
+                            branchTaken = true;
+                        }
+                        break;
+                    case Opcode::blnot:
+                        if (cpu.flag_lnot)
+                        {
+                            cpu.pc = current_pc + (inst.imm << 2);
+                            branchTaken = true;
+                        }
+                        break;
+                    case Opcode::ret:
+                        cpu.pc = stage[i].a;
+                        branchTaken = true;
+                        break;
+                    case Opcode::land:
+                        cpu.flag_land = cpu.alu.execute(aluop::LAND, A, B).flag_LAND;
+                        break;
+                    case Opcode::lor:
+                        cpu.flag_lor = cpu.alu.execute(aluop::LOR, A, B).flag_LOR;
+                        break;
+                    case Opcode::lnot:
+                        cpu.flag_lnot = cpu.alu.execute(aluop::LNOT, A, B).flag_LNOT;
+                        break;
+                    default:
+                        throw IllegalInstruction();
                     }
                 }
 
@@ -435,16 +372,16 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
                             flush_count++;
                         }
                     }
+                    if (isMicroprogrammed)
+                        isMicroSequencerBusy = false;
                 }
             }
 
-            // -----------------------------------
-            // ------------ OF stage -------------
-            // -----------------------------------
+            // OF stage
 
             if (currentStageNum == readStage)
             {
-                if (hasDataHazard<N>(stage, readStage, exStage, memStage, writeStage))
+                if (hasDataHazard<N>(stage, readStage, writeStage))
                 {
                     stall = true;
                     stall_count++;
@@ -455,69 +392,73 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
                     stage[i].a = (inst.op == Opcode::ret) ? cpu.regs[ra] : cpu.regs[inst.rs1];
                     stage[i].b = inst.isImm ? ImmValue(inst.mod, inst.imm) : cpu.regs[inst.rs2];
                     stage[i].storeVal = (inst.op == Opcode::st) ? cpu.regs[inst.rd] : 0;
-
-                    // Data Forwarding: for each source operand, take the value from the youngest in-flight producer (if there is one); otherwise the register-file value read above is current.
-                    // A call forwards its return address (pc + 4), everything else its result.
-                    int srcA, srcB, srcStore;
-                    getSources(inst, srcA, srcB, srcStore);
-
-                    auto forwardInto = [&](int reg, uint32_t &operand) -> void
-                    {
-                        if (reg == -1)
-                            return;
-                        int p = findProducer<N>(stage, exStage, writeStage, reg);
-                        if (p == -1)
-                            return;
-                        operand = (stage[p].inst.op == Opcode::call) ? stage[p].pc + 4 : stage[p].result;
-                    };
-                    forwardInto(srcA, stage[i].a);
-                    forwardInto(srcB, stage[i].b);
-                    forwardInto(srcStore, stage[i].storeVal);
-                    
                     if (isMicroprogrammed)
                     {
-                        // One control word per ISA instruction, looked up be opcode.
-                        // Both horizontal and vertical control stores hand back the same MicroInstruction type.
-
-                        if(useVertical){
-                            // Vertical: compact encoded fields -> decoder -> flat control bits
-                            stage[i].uInst = vROM.fetchDecoded(vROM.entryFor(inst.op));
-                        }
-                        else{
-                            // Horizontal: control bits read straight out of the control store.
-                            stage[i].uInst = hROM.fetch(hROM.entryFor(inst.op));
-                        }
+                        // Decode the opcode and fetch its EX word (step 0).
+                        // The MA and RW words are fetched when the instruction
+                        // reaches those stages (see the shift below).
+                        stage[i].uInst =
+                            microROM.fetchForStage(inst.op, Microprogramming::STEP_EX);
                     }
                 }
             }
 
             if (i + 1 < static_cast<int>(N) && (!stall || currentStageNum > readStage))
             {
-                stage[i + 1] = stage[i];
-                stage[i].valid = false;
+                // Prevent IF stage from shifting into OF while the micro-sequencer is busy translating.
+                // bool preventShift = (isMicroprogrammed && isMicroSequencerBusy && currentStageNum == 1);
+                bool preventShift = false;
+                if (!preventShift)
+                {
+                    stage[i + 1] = stage[i];
+                    stage[i].valid = false;
+
+                    // The instruction just entered stage number i + 2: give it the
+                    // micro-word of that stage. With separate MA and RW stages each
+                    // gets its own word; with merged MA/RW both words are combined.
+                    if (isMicroprogrammed && stage[i + 1].valid)
+                    {
+                        const int entering = i + 2;
+                        const Opcode op = stage[i + 1].inst.op;
+                        if (entering == memStage)
+                        {
+                            MicroInstruction w = microROM.fetchForStage(op, Microprogramming::STEP_MA);
+                            if (memStage == writeStage)
+                                w.control |= microROM.fetchForStage(op, Microprogramming::STEP_RW).control;
+                            stage[i + 1].uInst = w;
+                        }
+                        else if (entering == writeStage)
+                            stage[i + 1].uInst = microROM.fetchForStage(op, Microprogramming::STEP_RW);
+                    }
+                }
             }
 
-            // ----------------------------------
-            // ------------ IF stage ------------
-            // ----------------------------------
+            // IF stage
 
             if (currentStageNum == 1 && !stall)
             {
-                if (cpu.pc < cpu.instruction_limit)
+                if (isMicroprogrammed && isMicroSequencerBusy)
                 {
-                    stage[0].valid = true;
-                    stage[0].inst = decode(cpu.fetchInst());
-                    stage[0].pc = cpu.pc;
-                    stage[0].a = 0;
-                    stage[0].b = 0;
-                    stage[0].result = 0;
-                    stage[0].storeVal = 0;
-                    if (isMicroprogrammed)
-                        stage[0].uInst = MicroInstruction{};
-                    cpu.pc += 4;
+                    // Natural stall holding the IF stage state
                 }
                 else
-                    stage[0].valid = false;
+                {
+                    if (cpu.pc < cpu.instruction_limit)
+                    {
+                        stage[0].valid = true;
+                        stage[0].inst = decode(cpu.fetchInst());
+                        stage[0].pc = cpu.pc;
+                        stage[0].a = 0;
+                        stage[0].b = 0;
+                        stage[0].result = 0;
+                        stage[0].storeVal = 0;
+                        if (isMicroprogrammed)
+                            stage[0].uInst = MicroInstruction{};
+                        cpu.pc += 4;
+                    }
+                    else
+                        stage[0].valid = false;
+                }
             }
         }
     }
@@ -530,6 +471,8 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
         cpu.pc = cpu.instruction_limit;
         for (size_t i = 0; i < N; ++i)
             stage[i].valid = false;
+        if (isMicroprogrammed)
+            isMicroSequencerBusy = false;
     }
 
     cycle_count++;
@@ -539,9 +482,7 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
 template <size_t N>
 void PipelinedCore<N>::printPipelineDiagram() const
 {
-    const char *labels4[] = {"IF", "OF", "EX", "MA/RW"};
-    const char *labels6[] = {"IF", "OF", "EX", "MA1", "MA2", "RW"};
-    const char *const *labels = (N == 4) ? labels4 : labels6;
+    const char *labels[4] = {"IF", "OF", "EX", "MA/RW"};
     cout << "Cycle " << std::setw(3) << cycle_count << " | ";
     for (size_t i = 0; i < N; ++i)
     {
@@ -552,8 +493,8 @@ void PipelinedCore<N>::printPipelineDiagram() const
             cout << "  --- | ";
     }
     double cpi = (instruction_count > 0) ? static_cast<double>(cycle_count) / instruction_count : 0.0;
-    cout << "Insts: " << instruction_count << " Stalls: " << stall_count << " Flushes: " << flush_count << " CPI: " << std::fixed << std::setprecision(2) << cpi << "\n";
+    cout << "Insts: " << instruction_count << " Stalls: " << stall_count << " Flushes: " << flush_count
+         << " CPI: " << std::fixed << std::setprecision(2) << cpi << "\n";
 }
 
 template struct PipelinedCore<4>;
-template struct PipelinedCore<6>;
