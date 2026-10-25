@@ -8,8 +8,15 @@
 #include <string>
 #include <vector>
 
-// Grouping mutually exclusive operations into encoded fields
-enum class VDataPathCtrl : std::uint8_t { NONE, ALU_TO_REG, MEM_TO_REG, REG_TO_MEM };
+// Grouping mutually exclusive stage operations into encoded fields
+enum class VDataPathCtrl : std::uint8_t { 
+    NONE, 
+    ALU_COMPUTE,   // EX stage: ALU computes result
+    MEM_LOAD,      // MA stage: Read from memory
+    MEM_STORE,     // MA stage: Write to memory
+    REG_WRITE      // RW stage: Write result back to register file
+};
+
 enum class VPcCtrl : std::uint8_t { NONE, BRANCH, CALL, RET };
 enum class VFlagCtrl : std::uint8_t { 
     NONE, CMP_UPDATE, 
@@ -40,6 +47,10 @@ public:
 
     std::size_t entryFor(Opcode opcode) const;
     
+    // NEW: (opcode, step) addressing helpers for multi-stage pipeline tracking
+    std::size_t microPCFor(Opcode opcode, std::size_t step) const;
+    MicroInstruction fetchForStage(Opcode opcode, std::size_t step) const;
+
     // fetchDecoded (and fetch alias) returns the decoded horizontal microinstruction
     MicroInstruction fetchDecoded(std::size_t microPC) const;
     MicroInstruction fetch(std::size_t microPC) const { return fetchDecoded(microPC); }
