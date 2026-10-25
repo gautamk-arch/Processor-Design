@@ -107,7 +107,7 @@ bool hasDataHazard(const typename PipelinedCore<N>::Slot *stage, int readStage, 
         if (reg == -1)
             continue;
         int p = findProducer<N>(stage, exStage, writeStage, reg);
-        if (p != -1 && stage[p].inst.op == Opcode::ld && p < memStage)
+        if (p != -1 && stage[p].inst.op == Opcode::ld && p < memStage - 1)
             return true; // stall
     }
     return false;
@@ -160,26 +160,52 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
             // ----------- MA / RW stage ------------
             // --------------------------------------
 
+            // MA1
+            if (currentStageNum == marStage && stage[i].valid)
+            {
+                bool isLoadOp = isMicroprogrammed ? stage[i].uInst.get(ControlBit::LD_RESULT_WRITE) : (stage[i].inst.op == Opcode::ld);
+                bool isStoreOp = isMicroprogrammed ? stage[i].uInst.get(ControlBit::MAR_WRITE) : (stage[i].inst.op == Opcode::st);
+                if (isLoadOp || isStoreOp)
+                {
+                    stage[i].mar = stage[i].result; // MAR <- ALU result (effective address)
+
+                    // Address validation. A bad address is not raised here: the exception travels down the pipeline with the instruction and is taken in MA2. That way every older instruction (still in MA2 / RW right now) finishes first, so the exception stays precise.
+                    try
+                    {
+                        cpu.checkMemoryAccess(stage[i].mar);
+                        if (isLoadOp && stage[i].inst.rs1 == sp && static_cast<int32_t>(stage[i].mar) >= stack_base)
+                            throw StackUnderflow();
+                        if (!isLoadOp && stage[i].inst.rs1 == sp && static_cast<int32_t>(stage[i].mar) < stack_limit)
+                            throw StackOverflow();
+                    }
+                    catch (...)
+                    {
+                        stage[i].fault = std::current_exception();
+                    }
+                }
+            }
+
+            // MA2
             if (currentStageNum == memStage && stage[i].valid)
             {
+                if (stage[i].fault)
+                    std::rethrow_exception(stage[i].fault); // take the exception found in MA1; no memory access happens
+
                 Instruction inst = stage[i].inst;
-                uint32_t addr = stage[i].result;
+                uint32_t addr = stage[i].mar;
 
                 bool executeLoad = isMicroprogrammed ? stage[i].uInst.get(ControlBit::LD_RESULT_WRITE) : (inst.op == Opcode::ld);
                 bool executeStore = isMicroprogrammed ? stage[i].uInst.get(ControlBit::MAR_WRITE) : (inst.op == Opcode::st);
                 if (executeLoad)
                 {
-                    cpu.checkMemoryAccess(addr);
-                    if (inst.rs1 == sp && static_cast<int32_t>(addr) >= stack_base)
-                        throw StackUnderflow();
-                    stage[i].result = (cpu.dataMem[addr]) | (cpu.dataMem[addr + 1] << 8) | (cpu.dataMem[addr + 2] << 16) | (cpu.dataMem[addr + 3] << 24);
+                    // MDR <- memory[MAR]
+                    stage[i].mdr = (cpu.dataMem[addr]) | (cpu.dataMem[addr + 1] << 8) | (cpu.dataMem[addr + 2] << 16) | (cpu.dataMem[addr + 3] << 24);
+                    stage[i].result = stage[i].mdr;
                 }
                 else if (executeStore)
                 {
-                    cpu.checkMemoryAccess(addr);
-                    if (inst.rs1 == sp && static_cast<int32_t>(addr) < stack_limit)
-                        throw StackOverflow();
-                    uint32_t val = stage[i].storeVal;
+                    stage[i].mdr = stage[i].storeVal; // MDR <- store data
+                    uint32_t val = stage[i].mdr; // memory[MAR] <- MDR
                     cpu.dataMem[addr] = val & 0xFF;
                     cpu.dataMem[addr + 1] = (val >> 8) & 0xFF;
                     cpu.dataMem[addr + 2] = (val >> 16) & 0xFF;
@@ -187,6 +213,7 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
                 }
             }
 
+            // RW
             if (currentStageNum == writeStage && stage[i].valid)
             {
                 Instruction inst = stage[i].inst;
@@ -242,6 +269,7 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
                     else if (anyFlag)
                     {
                         // cmp / land / lor / lnot: only flags are written
+
                         aluResult res = cpu.alu.execute(op, A, B);
                         if (u.get(ControlBit::FLAG_E_EN) || u.get(ControlBit::FLAG_GT_EN))
                         {
