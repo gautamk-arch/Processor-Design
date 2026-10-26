@@ -107,7 +107,7 @@ bool hasDataHazard(const typename PipelinedCore<N>::Slot *stage, int readStage, 
         if (reg == -1)
             continue;
         int p = findProducer<N>(stage, exStage, writeStage, reg);
-        if (p != -1 && stage[p].inst.op == Opcode::ld && p < memStage - 1)
+        if (p != -1 && stage[p].inst.op == Opcode::ld && p < memStage)
             return true; // stall
     }
     return false;
@@ -329,7 +329,7 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
                     else if (u.get(ControlBit::ALU_RESULT_WRITE))
                     {
                         // for st, operand B holds the value to store, so the address uses the immediate
-                        int32_t Bop = u.get(ControlBit::MAR_WRITE) ? static_cast<int32_t>(ImmValue(inst.mod, inst.imm)) : B;
+                        int32_t Bop = u.get(ControlBit::IMMX_EN) ? static_cast<int32_t>(ImmValue(inst.mod, inst.imm)) : B;
 
                         // FPU math
                         if(inst.isFloat){
