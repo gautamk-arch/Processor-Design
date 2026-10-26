@@ -160,26 +160,73 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
             // ----------- MA / RW stage ------------
             // --------------------------------------
 
+            // MA1
+            if (currentStageNum == marStage && stage[i].valid)
+            {
+                bool isLoadOp, isStoreOp;
+                
+                // Fetch the MA step micro-word
+                if (isMicroprogrammed) {
+                    const MicroInstruction &u = useVertical 
+                        ? vROM.fetchForStage(stage[i].inst.op, Microprogramming::STEP_MA)
+                        : hROM.fetchForStage(stage[i].inst.op, Microprogramming::STEP_MA);
+                    isLoadOp = u.get(ControlBit::LD_RESULT_WRITE);
+                    isStoreOp = u.get(ControlBit::MAR_WRITE);
+                } else {
+                    isLoadOp = (stage[i].inst.op == Opcode::ld);
+                    isStoreOp = (stage[i].inst.op == Opcode::st);
+                }
+
+                if (isLoadOp || isStoreOp)
+                {
+                    stage[i].mar = stage[i].result; // MAR <- ALU result (effective address)
+
+                    // Address validation. A bad address is not raised here: the exception travels down the pipeline with the instruction and is taken in MA2. That way every older instruction (still in MA2 / RW right now) finishes first, so the exception stays precise.
+                    try
+                    {
+                        cpu.checkMemoryAccess(stage[i].mar);
+                        if (isLoadOp && stage[i].inst.rs1 == sp && static_cast<int32_t>(stage[i].mar) >= stack_base)
+                            throw StackUnderflow();
+                        if (!isLoadOp && stage[i].inst.rs1 == sp && static_cast<int32_t>(stage[i].mar) < stack_limit)
+                            throw StackOverflow();
+                    }
+                    catch (...)
+                    {
+                        stage[i].fault = std::current_exception();
+                    }
+                }
+            }
+
+            // MA2
             if (currentStageNum == memStage && stage[i].valid)
             {
-                Instruction inst = stage[i].inst;
-                uint32_t addr = stage[i].result;
+                if (stage[i].fault)
+                    std::rethrow_exception(stage[i].fault); // take the exception found in MA1; no memory access happens
 
-                bool executeLoad = isMicroprogrammed ? stage[i].uInst.get(ControlBit::LD_RESULT_WRITE) : (inst.op == Opcode::ld);
-                bool executeStore = isMicroprogrammed ? stage[i].uInst.get(ControlBit::MAR_WRITE) : (inst.op == Opcode::st);
+                Instruction inst = stage[i].inst;
+                uint32_t addr = stage[i].mar;
+
+                bool executeLoad, executeStore;
+
+                // Fetch the MA step micro-word dynamically
+                if (isMicroprogrammed) {
+                    const MicroInstruction &u = useVertical ? vROM.fetchForStage(inst.op, Microprogramming::STEP_MA): hROM.fetchForStage(inst.op, Microprogramming::STEP_MA);
+                    executeLoad = u.get(ControlBit::LD_RESULT_WRITE);
+                    executeStore = u.get(ControlBit::MAR_WRITE);
+                } else {
+                    executeLoad = (inst.op == Opcode::ld);
+                    executeStore = (inst.op == Opcode::st);
+                }
                 if (executeLoad)
                 {
-                    cpu.checkMemoryAccess(addr);
-                    if (inst.rs1 == sp && static_cast<int32_t>(addr) >= stack_base)
-                        throw StackUnderflow();
-                    stage[i].result = (cpu.dataMem[addr]) | (cpu.dataMem[addr + 1] << 8) | (cpu.dataMem[addr + 2] << 16) | (cpu.dataMem[addr + 3] << 24);
+                    // MDR <- memory[MAR]
+                    stage[i].mdr = (cpu.dataMem[addr]) | (cpu.dataMem[addr + 1] << 8) | (cpu.dataMem[addr + 2] << 16) | (cpu.dataMem[addr + 3] << 24);
+                    stage[i].result = stage[i].mdr;
                 }
                 else if (executeStore)
                 {
-                    cpu.checkMemoryAccess(addr);
-                    if (inst.rs1 == sp && static_cast<int32_t>(addr) < stack_limit)
-                        throw StackOverflow();
-                    uint32_t val = stage[i].storeVal;
+                    stage[i].mdr = stage[i].storeVal; // MDR <- store data
+                    uint32_t val = stage[i].mdr; // memory[MAR] <- MDR
                     cpu.dataMem[addr] = val & 0xFF;
                     cpu.dataMem[addr + 1] = (val >> 8) & 0xFF;
                     cpu.dataMem[addr + 2] = (val >> 16) & 0xFF;
@@ -187,10 +234,21 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
                 }
             }
 
+            // RW
             if (currentStageNum == writeStage && stage[i].valid)
             {
                 Instruction inst = stage[i].inst;
-                bool executeWrite = isMicroprogrammed ? stage[i].uInst.get(ControlBit::REG_DATA_WRITE) : writesRegister(inst, inst.rd);
+                bool executeWrite;
+                
+                // Fetch the RW step micro-word
+                if (isMicroprogrammed) {
+                    const MicroInstruction &u = useVertical 
+                        ? vROM.fetchForStage(inst.op, Microprogramming::STEP_RW)
+                        : hROM.fetchForStage(inst.op, Microprogramming::STEP_RW);
+                    executeWrite = u.get(ControlBit::REG_DATA_WRITE);
+                } else {
+                    executeWrite = writesRegister(inst, inst.rd);
+                }
                 if (inst.op == Opcode::call)
                     cpu.regs[ra] = stage[i].pc + 4;
                 else if (executeWrite)
@@ -222,7 +280,7 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
 
                 if (isMicroprogrammed)
                 {
-                    const MicroInstruction &u = stage[i].uInst;
+                    const MicroInstruction &u = useVertical ? vROM.fetchForStage(inst.op, Microprogramming::STEP_EX): hROM.fetchForStage(inst.op, Microprogramming::STEP_EX);
                     const bool anyFlag = u.get(ControlBit::FLAG_E_EN) || u.get(ControlBit::FLAG_GT_EN) || u.get(ControlBit::FLAG_LAND_EN) || u.get(ControlBit::FLAG_LOR_EN) || u.get(ControlBit::FLAG_LNOT_EN);
                     const aluop op = static_cast<aluop>(u.args); // ALU function lives in args
 
@@ -241,24 +299,37 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
                     }
                     else if (anyFlag)
                     {
-                        // cmp / land / lor / lnot: only flags are written
-                        aluResult res = cpu.alu.execute(op, A, B);
-                        if (u.get(ControlBit::FLAG_E_EN) || u.get(ControlBit::FLAG_GT_EN))
-                        {
-                            cpu.flag_E = res.flag_E;
-                            cpu.flag_GT = res.flag_GT;
+                        // FPU Comparison (cmp)
+                        if (inst.isFloat && inst.op == Opcode::cmp) {
+                            fpuResult res = cpu.fpu.execute(fpuop::FCMP, A, B);
+                            if (res.flag_INVALID) throw std::runtime_error("FPU Invalid Operation (NaN)");
+                            
+                            if (u.get(ControlBit::FLAG_E_EN) || u.get(ControlBit::FLAG_GT_EN)) {
+                                cpu.flag_E = res.flag_E;
+                                cpu.flag_GT = res.flag_GT;
+                            }
                         }
-                        if (u.get(ControlBit::FLAG_LAND_EN))
-                            cpu.flag_land = res.flag_LAND;
-                        if (u.get(ControlBit::FLAG_LOR_EN))
-                            cpu.flag_lor = res.flag_LOR;
-                        if (u.get(ControlBit::FLAG_LNOT_EN))
-                            cpu.flag_lnot = res.flag_LNOT;
+                        // ALU Comparison (cmp / land / lor / lnot)
+
+                        else{
+                            aluResult res = cpu.alu.execute(op, A, B);
+                            if (u.get(ControlBit::FLAG_E_EN) || u.get(ControlBit::FLAG_GT_EN))
+                            {
+                                cpu.flag_E = res.flag_E;
+                                cpu.flag_GT = res.flag_GT;
+                            }
+                            if (u.get(ControlBit::FLAG_LAND_EN))
+                                cpu.flag_land = res.flag_LAND;
+                            if (u.get(ControlBit::FLAG_LOR_EN))
+                                cpu.flag_lor = res.flag_LOR;
+                            if (u.get(ControlBit::FLAG_LNOT_EN))
+                                cpu.flag_lnot = res.flag_LNOT;
+                        }
                     }
                     else if (u.get(ControlBit::ALU_RESULT_WRITE))
                     {
                         // for st, operand B holds the value to store, so the address uses the immediate
-                        int32_t Bop = u.get(ControlBit::MAR_WRITE) ? static_cast<int32_t>(ImmValue(inst.mod, inst.imm)) : B;
+                        int32_t Bop = u.get(ControlBit::IMMX_EN) ? static_cast<int32_t>(ImmValue(inst.mod, inst.imm)) : B;
 
                         // FPU math
                         if(inst.isFloat){
@@ -287,18 +358,26 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
                 else
                 {
                     // FPU math
-                    if (inst.isFloat && (inst.op == Opcode::add || inst.op == Opcode::sub || inst.op == Opcode::mul || inst.op == Opcode::div))
+                    if (inst.isFloat && (inst.op == Opcode::add || inst.op == Opcode::sub || inst.op == Opcode::mul || inst.op == Opcode::div || inst.op == Opcode::cmp))
                     {
-                        fpuop f_op;
-                        if (inst.op == Opcode::add)f_op = fpuop::FADD;
-                        else if (inst.op ==Opcode::sub) f_op =fpuop::FSUB;
-                        else if (inst.op ==Opcode::mul) f_op =fpuop::FMUL;
-                        else f_op = fpuop::FDIV;
-                            
-                        fpuResult res = cpu.fpu.execute(f_op, A, B);
-                        if (res.flag_DIVZERO) throw DivideByZero();
-                        if (res.flag_INVALID) throw std::runtime_error("FPUInvalid Operation (NaN)");
-                        stage[i].result = res.val;
+                        if (inst.op == Opcode::cmp) {
+                            fpuResult res = cpu.fpu.execute(fpuop::FCMP, A, B);
+                            if (res.flag_INVALID) throw std::runtime_error("FPU Invalid Operation (NaN)");
+                            cpu.flag_E = res.flag_E;
+                            cpu.flag_GT = res.flag_GT;
+                        }
+                        else{
+                            fpuop f_op;
+                            if (inst.op == Opcode::add)f_op = fpuop::FADD;
+                            else if (inst.op ==Opcode::sub) f_op =fpuop::FSUB;
+                            else if (inst.op ==Opcode::mul) f_op =fpuop::FMUL;
+                            else f_op = fpuop::FDIV;
+                                
+                            fpuResult res = cpu.fpu.execute(f_op, A, B);
+                            if (res.flag_DIVZERO) throw DivideByZero();
+                            if (res.flag_INVALID) throw std::runtime_error("FPUInvalid Operation (NaN)");
+                            stage[i].result = res.val;
+                        }
                     }
 
                     // ALU math
@@ -473,21 +552,6 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
                     forwardInto(srcA, stage[i].a);
                     forwardInto(srcB, stage[i].b);
                     forwardInto(srcStore, stage[i].storeVal);
-                    
-                    if (isMicroprogrammed)
-                    {
-                        // One control word per ISA instruction, looked up be opcode.
-                        // Both horizontal and vertical control stores hand back the same MicroInstruction type.
-
-                        if(useVertical){
-                            // Vertical: compact encoded fields -> decoder -> flat control bits
-                            stage[i].uInst = vROM.fetchDecoded(vROM.entryFor(inst.op));
-                        }
-                        else{
-                            // Horizontal: control bits read straight out of the control store.
-                            stage[i].uInst = hROM.fetch(hROM.entryFor(inst.op));
-                        }
-                    }
                 }
             }
 
@@ -512,8 +576,6 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
                     stage[0].b = 0;
                     stage[0].result = 0;
                     stage[0].storeVal = 0;
-                    if (isMicroprogrammed)
-                        stage[0].uInst = MicroInstruction{};
                     cpu.pc += 4;
                 }
                 else

@@ -1,6 +1,7 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
+#include <exception>
 #include "isa.h"
 #include "cpu.h"
 #include "microprogramming.h"
@@ -37,7 +38,9 @@ struct PipelinedCore : PipelineBase
         uint32_t b = 0;
         uint32_t storeVal = 0;
         uint32_t result = 0;
-        MicroInstruction uInst;
+        uint32_t mar = 0;
+        uint32_t mdr = 0;
+        std::exception_ptr fault;
     };
     Slot stage[N];
     Microprogramming hROM;  // horizontal control store (wide control word)
@@ -46,7 +49,8 @@ struct PipelinedCore : PipelineBase
     // Stage numbers are 1-based (IF = 1).
     int readStage;  // OF: operands are read here
     int exStage;    // EX: ALU work, branches resolve here
-    int memStage;   // MA: load/store interacts with memory
+    int marStage;   // MA1: Address is loaded in memory
+    int memStage;   // MA2: Load/store takes place in memory
     int writeStage; // RW: results are written into register file
 
     uint32_t cycle_count = 0;
@@ -79,6 +83,7 @@ struct PipelinedCore : PipelineBase
     {
         readStage = 2;
         exStage = 3;
+        marStage = 4;
         memStage = 4;
         writeStage = 4;
     }
@@ -89,6 +94,7 @@ struct PipelinedCore : PipelineBase
     {
         readStage = 2;
         exStage = 3;
+        marStage = 4;
         memStage = 5;
         writeStage = 6;
     }

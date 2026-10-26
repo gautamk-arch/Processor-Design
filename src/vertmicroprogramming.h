@@ -12,9 +12,11 @@
 enum class VDataPathCtrl : std::uint8_t { 
     NONE, 
     ALU_COMPUTE,   // EX stage: ALU computes result
+    ALU_ADDR,   //EX: ALU computes an address from A and the immediate (ld / st)
     MEM_LOAD,      // MA stage: Read from memory
     MEM_STORE,     // MA stage: Write to memory
-    REG_WRITE      // RW stage: Write result back to register file
+    REG_WRITE_ALU, // RW: register <- ALU result
+    REG_WRITE_MEM  // RW: register <- loaded data (MDR)
 };
 
 enum class VPcCtrl : std::uint8_t { NONE, BRANCH, CALL, RET };

@@ -33,18 +33,27 @@ MicroInstruction VerticalMicroprogramming::decode(const VerticalMicroInstruction
 
     // Decoding stage-specific datapath control
     switch (vmi.dpCtrl) {
-        case VDataPathCtrl::ALU_COMPUTE:
+        case VDataPathCtrl::ALU_COMPUTE:    // EX
             mi.set(ControlBit::ALU_RESULT_WRITE);
             break;
-        case VDataPathCtrl::MEM_LOAD:
-            mi.set(ControlBit::LD_RESULT_WRITE);
+        case VDataPathCtrl::ALU_ADDR:   // EX: operand B is the immediate
+            mi.set(ControlBit::ALU_RESULT_WRITE);
+            mi.set(ControlBit::IMMX_EN);
             break;
-        case VDataPathCtrl::MEM_STORE:
+        case VDataPathCtrl::MEM_LOAD:
+            mi.set(ControlBit::LD_RESULT_WRITE);    // MA
+            break;
+        case VDataPathCtrl::MEM_STORE:  // MA
             mi.set(ControlBit::MAR_WRITE);
             mi.set(ControlBit::MDR_WRITE);
             break;
-        case VDataPathCtrl::REG_WRITE:
+        case VDataPathCtrl::REG_WRITE_ALU:  // RW: value from the ALU result
             mi.set(ControlBit::REG_DATA_WRITE);
+            mi.set(ControlBit::ALU_RESULT_READ);
+            break;
+        case VDataPathCtrl::REG_WRITE_MEM:  // RW: value from the loaded data
+            mi.set(ControlBit::REG_DATA_WRITE);
+            mi.set(ControlBit::LD_RESULT_READ);
             break;
         case VDataPathCtrl::NONE:
             break;
@@ -124,7 +133,7 @@ std::vector<VerticalMicroInstruction> VerticalMicroprogramming::makeInstructionP
             throw std::invalid_argument("Unknown SimpleRisc opcode");
     }
 
-    // Create 3 steps for every instruction: Step 0 (EX), Step 1 (MA), Step 2 (RW)
+    // One micro-word per pipeline step: STEP_EX, STEP_MA, STEP_RW
     code.push_back(make(std::string(baseLabel) + "_ex"));
     code.push_back(make(std::string(baseLabel) + "_ma"));
     code.push_back(make(std::string(baseLabel) + "_rw"));
@@ -153,55 +162,55 @@ std::vector<VerticalMicroInstruction> VerticalMicroprogramming::makeInstructionP
         case Opcode::lsl:
         case Opcode::lsr:
         case Opcode::asr:
-            wire(0, VDataPathCtrl::ALU_COMPUTE, VPcCtrl::NONE, VFlagCtrl::NONE, aluFn); // EX
-            wire(2, VDataPathCtrl::REG_WRITE,   VPcCtrl::NONE, VFlagCtrl::NONE);        // RW
+            wire(Microprogramming::STEP_EX, VDataPathCtrl::ALU_COMPUTE,   VPcCtrl::NONE, VFlagCtrl::NONE, aluFn); // EX
+            wire(Microprogramming::STEP_RW, VDataPathCtrl::REG_WRITE_ALU, VPcCtrl::NONE, VFlagCtrl::NONE);        // RW
             break;
         case Opcode::cmp:
-            wire(0, VDataPathCtrl::NONE, VPcCtrl::NONE, VFlagCtrl::CMP_UPDATE, static_cast<std::uint16_t>(aluop::CMP));
+            wire(Microprogramming::STEP_EX, VDataPathCtrl::NONE, VPcCtrl::NONE, VFlagCtrl::CMP_UPDATE, static_cast<std::uint16_t>(aluop::CMP));
             break;
         case Opcode::nop:
             break;
         case Opcode::ld:
-            wire(0, VDataPathCtrl::ALU_COMPUTE, VPcCtrl::NONE, VFlagCtrl::NONE, static_cast<std::uint16_t>(aluop::ADD)); // EX: addr calc
-            wire(1, VDataPathCtrl::MEM_LOAD,    VPcCtrl::NONE, VFlagCtrl::NONE);                                         // MA: load mem
-            wire(2, VDataPathCtrl::REG_WRITE,   VPcCtrl::NONE, VFlagCtrl::NONE);                                         // RW: write reg
+            wire(Microprogramming::STEP_EX, VDataPathCtrl::ALU_ADDR,      VPcCtrl::NONE, VFlagCtrl::NONE, static_cast<std::uint16_t>(aluop::ADD)); // EX: addr = A + imm
+            wire(Microprogramming::STEP_MA, VDataPathCtrl::MEM_LOAD,      VPcCtrl::NONE, VFlagCtrl::NONE);                                         // MA: MDR <- mem[MAR]
+            wire(Microprogramming::STEP_RW, VDataPathCtrl::REG_WRITE_MEM, VPcCtrl::NONE, VFlagCtrl::NONE);
             break;
         case Opcode::st:
-            wire(0, VDataPathCtrl::ALU_COMPUTE, VPcCtrl::NONE, VFlagCtrl::NONE, static_cast<std::uint16_t>(aluop::ADD)); // EX: addr calc
-            wire(1, VDataPathCtrl::MEM_STORE,   VPcCtrl::NONE, VFlagCtrl::NONE);                                         // MA: store mem
+            wire(Microprogramming::STEP_EX, VDataPathCtrl::ALU_ADDR,   VPcCtrl::NONE, VFlagCtrl::NONE, static_cast<std::uint16_t>(aluop::ADD)); // EX: addr = A + imm
+            wire(Microprogramming::STEP_MA, VDataPathCtrl::MEM_STORE,  VPcCtrl::NONE, VFlagCtrl::NONE);                                         // MA: mem[MAR] <- MDR
             break;
         case Opcode::b:
-            wire(0, VDataPathCtrl::NONE, VPcCtrl::BRANCH, VFlagCtrl::NONE);
+            wire(Microprogramming::STEP_EX, VDataPathCtrl::NONE, VPcCtrl::BRANCH, VFlagCtrl::NONE);
             break;
         case Opcode::beq:
-            wire(0, VDataPathCtrl::NONE, VPcCtrl::BRANCH, VFlagCtrl::COND_E);
+            wire(Microprogramming::STEP_EX, VDataPathCtrl::NONE, VPcCtrl::BRANCH, VFlagCtrl::COND_E);
             break;
         case Opcode::bgt:
-            wire(0, VDataPathCtrl::NONE, VPcCtrl::BRANCH, VFlagCtrl::COND_GT);
+            wire(Microprogramming::STEP_EX, VDataPathCtrl::NONE, VPcCtrl::BRANCH, VFlagCtrl::COND_GT);
             break;
         case Opcode::bland:
-            wire(0, VDataPathCtrl::NONE, VPcCtrl::BRANCH, VFlagCtrl::COND_LAND);
+            wire(Microprogramming::STEP_EX, VDataPathCtrl::NONE, VPcCtrl::BRANCH, VFlagCtrl::COND_LAND);
             break;
         case Opcode::blor:
-            wire(0, VDataPathCtrl::NONE, VPcCtrl::BRANCH, VFlagCtrl::COND_LOR);
+            wire(Microprogramming::STEP_EX, VDataPathCtrl::NONE, VPcCtrl::BRANCH, VFlagCtrl::COND_LOR);
             break;
         case Opcode::blnot:
-            wire(0, VDataPathCtrl::NONE, VPcCtrl::BRANCH, VFlagCtrl::COND_LNOT);
+            wire(Microprogramming::STEP_EX, VDataPathCtrl::NONE, VPcCtrl::BRANCH, VFlagCtrl::COND_LNOT);
             break;
         case Opcode::call:
-            wire(0, VDataPathCtrl::NONE, VPcCtrl::CALL, VFlagCtrl::NONE);
+            wire(Microprogramming::STEP_EX, VDataPathCtrl::NONE, VPcCtrl::CALL, VFlagCtrl::NONE);
             break;
         case Opcode::ret:
-            wire(0, VDataPathCtrl::NONE, VPcCtrl::RET, VFlagCtrl::NONE);
+            wire(Microprogramming::STEP_EX, VDataPathCtrl::NONE, VPcCtrl::RET, VFlagCtrl::NONE);
             break;
         case Opcode::land:
-            wire(0, VDataPathCtrl::NONE, VPcCtrl::NONE, VFlagCtrl::COND_LAND, static_cast<std::uint16_t>(aluop::LAND));
+            wire(Microprogramming::STEP_EX, VDataPathCtrl::NONE, VPcCtrl::NONE, VFlagCtrl::COND_LAND, static_cast<std::uint16_t>(aluop::LAND));
             break;
         case Opcode::lor:
-            wire(0, VDataPathCtrl::NONE, VPcCtrl::NONE, VFlagCtrl::COND_LOR, static_cast<std::uint16_t>(aluop::LOR));
+            wire(Microprogramming::STEP_EX, VDataPathCtrl::NONE, VPcCtrl::NONE, VFlagCtrl::COND_LOR, static_cast<std::uint16_t>(aluop::LOR));
             break;
         case Opcode::lnot:
-            wire(0, VDataPathCtrl::NONE, VPcCtrl::NONE, VFlagCtrl::COND_LNOT, static_cast<std::uint16_t>(aluop::LNOT));
+            wire(Microprogramming::STEP_EX, VDataPathCtrl::NONE, VPcCtrl::NONE, VFlagCtrl::COND_LNOT, static_cast<std::uint16_t>(aluop::LNOT));
             break;
         default:
             break;
@@ -228,6 +237,9 @@ void VerticalMicroprogramming::build() {
         VerticalMicroProgram prog;
         prog.entry = rom_.size();
         prog.instructions = makeInstructionProgram(op);
+        if (prog.instructions.size() != Microprogramming::STEPS_PER_INSTRUCTION) {
+            throw std::logic_error("microprogram must have exactly one micro-word per step");
+        }
 
         // At the end of the microprogram (Step 2 / RW), loop back to instruction fetch (0)
         prog.instructions.back().fetchSource = FetchSource::BRANCH_TARGET;
@@ -252,14 +264,11 @@ std::size_t VerticalMicroprogramming::entryFor(Opcode opcode) const {
 
 // 3. Calculate exact microPC for (opcode, step)
 std::size_t VerticalMicroprogramming::microPCFor(Opcode opcode, std::size_t step) const {
-    const auto idx = static_cast<std::size_t>(opcode);
-    if (idx >= programs_.size()) {
-        throw std::invalid_argument("Opcode out of range in VerticalMicroprogramming::microPCFor");
-    }
-    if (step >= programs_[idx].instructions.size()) {
+    const std::size_t entry = entryFor(opcode);   // throws IllegalInstruction for an unused opcode
+    if (step >= Microprogramming::STEPS_PER_INSTRUCTION) {
         throw std::out_of_range("Pipeline step out of range for microprogram");
     }
-    return entry_[idx] + step;
+    return entry + step;
 }
 
 // 4. Directly fetch and decode the microinstruction for (opcode, step)
