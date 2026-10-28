@@ -2,6 +2,7 @@
 #include <iostream>
 #include <iomanip>
 #include <stdexcept>
+#include <chrono>
 using std::cout;
 
 static const char *opNames[] = {
@@ -140,6 +141,8 @@ void PipelinedCore<N>::run(CPU &cpu)    // run the program
         
         double cpi = (instruction_count > 0) ? static_cast<double>(cycle_count) / instruction_count : 0.0;
         cout << "Final CPI          : " << std::fixed << std::setprecision(2) << cpi << "\n";
+
+        printLatencySummary();
 }
 
 template <size_t N>
@@ -154,6 +157,7 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
     {
         for (int i = N - 1; i >= 0; --i)
         {
+            auto start_time = std::chrono::high_resolution_clock::now();
             int currentStageNum = i + 1;
 
             // --------------------------------------
@@ -581,6 +585,11 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
                 else
                     stage[0].valid = false;
             }
+
+            auto end_time = std::chrono::high_resolution_clock::now();
+            long long duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end_time - start_time).count();
+            step_latency_ns[i] = duration;
+            total_latency_ns[i] += duration;
         }
     }
     catch (const std::exception &e)
@@ -615,6 +624,24 @@ void PipelinedCore<N>::printPipelineDiagram() const
     }
     double cpi = (instruction_count > 0) ? static_cast<double>(cycle_count) / instruction_count : 0.0;
     cout << "Insts: " << instruction_count << " Stalls: " << stall_count << " Flushes: " << flush_count << " CPI: " << std::fixed << std::setprecision(2) << cpi << "\n";
+}
+
+template <size_t N>
+void PipelinedCore<N>::printLatencySummary() const
+{
+    const char *labels4[] = {"IF", "OF", "EX", "MA/RW"};
+    const char *labels6[] = {"IF", "OF", "EX", "MA1", "MA2", "RW"};
+    const char *const *labels = (N == 4) ? labels4 : labels6;
+
+    cout << "\n--- Stage Latency Summary (Software Execution) ---\n";
+    if (cycle_count == 0) return;
+
+    for (size_t i = 0; i < N; ++i)
+    {
+        double avg_latency = static_cast<double>(total_latency_ns[i]) / cycle_count;
+        cout << "Stage " << std::setw(5) << labels[i] << " Average: " 
+             << std::fixed << std::setprecision(2) << avg_latency << " ns\n";
+    }
 }
 
 template struct PipelinedCore<4>;
