@@ -2,6 +2,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <exception>
+#include <chrono>
 #include "isa.h"
 #include "cpu.h"
 #include "microprogramming.h"
@@ -58,6 +59,10 @@ struct PipelinedCore : PipelineBase
     uint32_t stall_count = 0;
     uint32_t flush_count = 0;
 
+    // Latency tracking arrays dynamically sized to N
+    long long step_latency_ns[N] = {0}; 
+    long long total_latency_ns[N] = {0};
+
     PipelinedCore()
     {
         static_assert(N == 4 || N == 6, "PipelinedCore supports only 4 or 6 stages");
@@ -71,6 +76,8 @@ struct PipelinedCore : PipelineBase
         for (size_t i = 0; i < N; ++i)
         {
             stage[i] = Slot{};
+            step_latency_ns[i] = 0;  
+            total_latency_ns[i] = 0;
         }
         cycle_count = 0;
         instruction_count = 0;
@@ -103,4 +110,12 @@ struct PipelinedCore : PipelineBase
     void step(CPU &cpu) override;
     void run(CPU &cpu) override;
     void printPipelineDiagram() const override;
+
+    long long getStageLatency(int stageIndex) const {
+        if (stageIndex >= 0 && stageIndex < static_cast<int>(N)) {
+            return step_latency_ns[stageIndex];
+        }
+        return 0;
+    }
+    void printLatencySummary() const;
 };
