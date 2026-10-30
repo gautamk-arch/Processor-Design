@@ -297,26 +297,29 @@ static uint64_t divide(uint64_t num, uint64_t den, uint64_t &rem)
     return Q;
 }
 
-// Digit-by-digit (restoring) integer square root: floor(sqrt(N)), remainder in `rem`.
+// Binary-search integer square root: floor(sqrt(N)), remainder in rem.
 static uint64_t isqrt(uint64_t N, uint64_t &rem)
 {
-    uint64_t res = 0, R = 0;
-    for (int i = 31; i >= 0; --i)
-    {
-        R = (R << 2) | ((N >> (2 * i)) & 3); // bring down next two bits
-        const uint64_t trial = (res << 2) | 1;
-        if (geq64(R, trial))
-        {
-            R = sub64(R, trial);
-            res = (res << 1) | 1;
-        }
-        else
-            res <<= 1;
-    }
-    rem = R;
-    return res;
-}
+    uint64_t lo = 0;
+    uint64_t hi = (1ULL << 32); // Exclusive upper bound
 
+    // Find the smallest x such that x*x > N.
+    while (lo < hi)
+    {
+        const uint64_t mid = lo + (hi - lo) / 2;
+        const uint64_t sq = mid * mid;
+
+        if (geq64(N, sq)) // N >= mid*mid
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+
+    const uint64_t root = lo - 1;
+    rem = sub64(N, root * root);
+
+    return root;
+}
 // ============================================================================
 //  The operations on raw bit patterns
 // ============================================================================
