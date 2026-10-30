@@ -21,6 +21,7 @@ struct PipelineBase
     virtual void step(CPU &cpu) = 0;
     virtual void run(CPU &cpu) = 0;
     virtual void printPipelineDiagram() const = 0;
+    virtual void printLatencySummary() const = 0;
 };
 
 

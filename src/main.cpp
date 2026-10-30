@@ -321,6 +321,17 @@ int main(int argc, char *argv[])
                         cout << "Microarchitectural state is only available in hmicro or vmicro modes.\n";
                     }
                 }
+                else if(cmd=="latency")
+                {
+                    if(activeCore)
+                    {
+                        activeCore->printLatencySummary();
+                    }
+                    else
+                    {
+                        cout<<"Latency metrics are not available on the non-pipelined CPU.\n";
+                    }
+                }
                 else if (cmd == "help")
                 {
                     cout << "Commands : \n"
@@ -334,6 +345,7 @@ int main(int argc, char *argv[])
                          << " reset               - Reset CPU and reload program\n"
                          << " pipe                - View pipeline state\n"
                          << " micro               - View microarchitectural state\n"
+                         << " latency             - View stage latencies and overheads\n"
                          << " quit or q           - Exit debugger\n";
                 }
                 else
