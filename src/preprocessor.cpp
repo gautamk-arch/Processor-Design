@@ -36,10 +36,16 @@ string expandMacros(const string &src, vector<string> &errors)
             linestream>>reg;
 
             //if there is any comment written by the user
-            int commentstartpos =reg.find('@');
+            size_t commentstartpos =reg.find('@');
             if(commentstartpos != string::npos)
             {
                 reg=reg.substr(0,commentstartpos);
+            }
+
+            // forces register to lowercase
+            for(int i=0;i<reg.length();i++)
+            {
+                reg[i]=tolower(reg[i]);
             }
 
             if(reg=="")
@@ -88,6 +94,9 @@ string expandMacros(const string &src, vector<string> &errors)
             else
             {
                 string reg = operands.substr(0, commaPos);
+                for(int i=0; i<reg.length(); i++) {
+                    reg[i] = tolower(reg[i]);
+                }
                 string immStr = operands.substr(commaPos + 1);
                 
                 try
