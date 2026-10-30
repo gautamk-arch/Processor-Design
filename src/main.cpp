@@ -19,16 +19,12 @@ int main(int argc, char *argv[])
     // Arguments parsing
     if (argc < 2)
     {
-        std::cerr << "Usage: " << argv[0] << " [-d|--debug] [--pipe4|--pipe6] [--hmicro|--vmicro] <filename.asm>\n";
+        std::cerr << "Usage: " << argv[0] << " [-d|--debug] <filename.asm>\n";
         return 1;
     }
 
     string asmFileName = "";
     bool use_debugger = false;
-    bool use_pipe4 = false;
-    bool use_pipe6 = false;
-    bool use_hmicro = false;
-    bool use_vmicro = false;
 
     for (int i = 1; i < argc; i++)
     {
@@ -37,54 +33,16 @@ int main(int argc, char *argv[])
         {
             use_debugger = true;
         }
-        else if (arg == "--pipe4")
-        {
-            use_pipe4 = true;
-        }
-        else if (arg == "--pipe6")
-        {
-            use_pipe6 = true;
-        }
-        else if (arg == "--pipe")
-        {
-            cerr << "Error: Use --pipe4 (4-stage) or --pipe6 (6-stage).\n";
-            return 1;
-        }
-        else if (arg == "--hmicro")
-        {
-            use_hmicro = true;
-        }
-        else if (arg == "--vmicro")
-        {
-            use_vmicro = true;
-        }
         else if (arg.size() > 1 && arg[0] == '-')
         {
             // catches typos
-            cerr << "Error: Unknown option '"<< arg <<"'.\n";
+            cerr << "Error: Unknown option '" << arg << "'.\n";
             return 1;
         }
         else
         {
             asmFileName = arg;
         }
-    }
-
-    // Flag combination rules
-    if (use_hmicro && use_vmicro)
-    {
-        cerr << "Error: --hmicro and --vmicro cannot be used together. Choose one.\n";
-        return 1;
-    }
-    if (use_pipe4 && use_pipe6)
-    {
-        cerr << "Error: --pipe4 and --pipe6 cannot be used together. Choose one.\n";
-        return 1;
-    }
-    if ((use_hmicro || use_vmicro) && !(use_pipe4 || use_pipe6))
-    {
-        std::cerr << "Error: --hmicro / --vmicro require --pipe4 or --pipe6 (e.g. " << argv[0] << " --pipe6 --vmicro <filename.asm>).\n";
-        return 1;
     }
 
     if (asmFileName.empty())
@@ -143,53 +101,18 @@ int main(int argc, char *argv[])
 
     // Architecture Configuration
     CPU cpu;
-    std::unique_ptr<PipelineBase> pipeline; // owns the selected pipeline
-    PipelineBase *activeCore = nullptr; // stays null in non-pipelined mode
+    // initializing the 4-stage pipeline and microcode by default
+    std::unique_ptr<PipelineBase> pipeline = std::make_unique<PipelinedCore<4>>();
+    PipelineBase *activeCore = pipeline.get();
 
-    if (use_pipe4 || use_pipe6)
-    {
-        if (use_pipe6)
-            pipeline = std::make_unique<PipelinedCore<6>>();
-        else
-            pipeline = std::make_unique<PipelinedCore<4>>();
-        activeCore = pipeline.get();
+    activeCore->isMicroprogrammed = true;
+    activeCore->useVertical = false; // defaults to horizontal microcode
 
-        const char *depth = use_pipe6 ? "6-Stage" : "4-Stage";
-        
-        if (use_hmicro)
-        {
-            // Horizontal microprogrammed pipeline
-            cout << "\n[Mode: Horizontal Microprogrammed " << depth << " Pipelined CPU]\n";
-            activeCore->isMicroprogrammed = true;
-            activeCore->useVertical = false;
-        }
-        else if (use_vmicro)
-        {
-            // Vertical microprogrammed pipeline
-            cout << "\n[Mode: Vertical Microprogrammed " << depth << " Pipelined CPU]\n";
-            activeCore->isMicroprogrammed = true;
-            activeCore->useVertical = true;
-        }
-        else
-        {
-            // Hardwired pipeline (no microprogramming)
-            cout << "\n[Mode: Hardwired " << depth << " Pipelined CPU]\n";
-            activeCore->isMicroprogrammed = false;
-            activeCore->useVertical = false;
-        }
-    }
-
-    // Hardwired Single-Cycle CPU 
-    // (Triggers if no flags are provided: ./simulator)
-    else
-    {
-        cout << "\n[Mode: Single-Cycle Hardwired CPU]\n";
-    }
+    cout << "\n[Mode: Horizontal Microprogrammed 4-stage Pipelined CPU]\n";
 
     // Load initial memory state into the base CPU
     cpu.loadHex(assembled_code);
-    if (activeCore)
-        activeCore->reset();
+    activeCore->reset();
 
     // Unified Execution and Debugger Loop
     if (use_debugger)
@@ -301,6 +224,81 @@ int main(int argc, char *argv[])
                         cout << "Usage: break <addr>\n";
                     }
                 }
+                else if (cmd == "mode")
+                {
+                    string newMode;
+                    if (ss >> newMode)
+                    {
+                        if (newMode == "single")
+                        {
+                            pipeline.reset();
+                            activeCore = nullptr;
+                            cout << "Switched to Single-Cycle Hardwired CPU.\n";
+                        }
+                        else if (newMode == "pipe4" || newMode=="pipe6")
+                        {
+                            // dynamically allocate the correct pipeline depth
+                            if (newMode == "pipe4") {
+                                pipeline = std::make_unique<PipelinedCore<4>>();
+                            } else {
+                                pipeline = std::make_unique<PipelinedCore<6>>();
+                            }
+                            activeCore = pipeline.get();
+
+                            string depthStr=(newMode=="pipe4")?"4-Stage":"6-Stage";
+                            
+                            string subMode;
+                            if (ss >> subMode)
+                            {
+                                if (subMode == "hmicro")
+                                {
+                                    activeCore->isMicroprogrammed = true;
+                                    activeCore->useVertical = false;
+                                    cout << "Switched to " << depthStr << " Horizontal Microprogrammed CPU.\n";
+                                }
+                                else if (subMode == "vmicro")
+                                {
+                                    activeCore->isMicroprogrammed = true;
+                                    activeCore->useVertical = true;
+                                    cout << "Switched to " << depthStr << " Vertical Microprogrammed CPU.\n";
+                                }
+                                else if (subMode == "hard")
+                                {
+                                    activeCore->isMicroprogrammed = false;
+                                    activeCore->useVertical = false;
+                                    cout << "Switched to " << depthStr << " Hardwired CPU.\n";
+                                }
+                                else
+                                {
+                                    cout << "Unknown micro mode. Using hardwired.\n";
+                                    activeCore->isMicroprogrammed = false;
+                                    activeCore->useVertical = false;
+                                }
+                            }
+                            else
+                            {
+                                activeCore->isMicroprogrammed = false;
+                                activeCore->useVertical = false;
+                                cout << "Switched to " << depthStr << " Hardwired CPU.\n";
+                            }
+                        }
+                        else
+                        {
+                            cout << "Unknown mode. Use: single, pipe4, or pipe6.\n";
+                        }
+                            
+                        // Auto-reset state when switching architectures
+                        cpu.reset();
+                        if (activeCore) activeCore->reset();
+                        cpu.loadHex(assembled_code);
+                        cout << "CPU reset and program reloaded for new mode.\n";
+
+                    }
+                    else
+                    {
+                        cout << "Usage: mode <single | pipe4 | pipe6> [hard | hmicro | vmicro]\n";
+                    }
+                }
                 else if (cmd == "pipe")
                 {
                     if (activeCore)
@@ -309,7 +307,7 @@ int main(int argc, char *argv[])
                     }
                     else
                     {
-                        cout << "Pipeline state is not available in Single-Cycle mode.\n";
+                        cout << "Pipeline state is not available on the non-pipelined CPU.\n";
                     }
                 }
                 else if (cmd == "micro")
@@ -320,18 +318,19 @@ int main(int argc, char *argv[])
                     }
                     else
                     {
-                        cout << "Microarchitectural state is only available in --micro mode.\n";
+                        cout << "Microarchitectural state is only available in hmicro or vmicro modes.\n";
                     }
                 }
                 else if (cmd == "help")
                 {
                     cout << "Commands : \n"
-                         << " step n              - Executes n intructions(default = 1)\n"
+                         << " step n              - Executes n instructions(default = 1)\n"
                          << " run                 - Executes until complete or break\n"
                          << " break <label|addr>  - Sets a breakpoint\n"
                          << " regs                - Dump CPU registers\n"
-                         << " mem <addr> n        - Views n words of memory at addr\n"
+                         << " mem <addr> [n]      - Views n words of memory at addr\n"
                          << " stack               - Stack Visualizer\n"
+                         << " mode <type> [sub]   - Switch architecture (single, pipe4|pipe6 hard|hmicro|vmicro)\n"
                          << " reset               - Reset CPU and reload program\n"
                          << " pipe                - View pipeline state\n"
                          << " micro               - View microarchitectural state\n"
