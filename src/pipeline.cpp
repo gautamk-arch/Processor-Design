@@ -371,7 +371,7 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
                 else
                 {
                     // FPU math
-                    if (inst.isFloat && (inst.op == Opcode::add || inst.op == Opcode::sub || inst.op == Opcode::mul || inst.op == Opcode::div || inst.op == Opcode::cmp|| inst.op == Opcode::fsqrt || inst.op == Opcode::itof || inst.op == Opcode::ftoi))
+                    if (inst.isFloat && (inst.op == Opcode::add || inst.op == Opcode::sub || inst.op == Opcode::mul || inst.op == Opcode::div || inst.op == Opcode::cmp /*|| inst.op == Opcode::fsqrt || inst.op == Opcode::itof || inst.op == Opcode::ftoi)*/))
                     {
                         if (inst.op == Opcode::cmp) {
                             fpuResult res = cpu.fpu.execute(fpuop::FCMP, A, B);
@@ -646,14 +646,26 @@ void PipelinedCore<N>::printLatencySummary() const
     const char *const *labels = (N == 4) ? labels4 : labels6;
 
     cout << "\n--- Stage Latency Summary (Software Execution) ---\n";
-    if (cycle_count == 0) return;
+    if (cycle_count == 0)
+    {
+        cout<<"No cycles executed yet.\n";
+        return;
+    }
+    long long total_sim_time = 0;
+    for (size_t i = 0; i < N; ++i) {
+        total_sim_time += total_latency_ns[i];
+    }
 
     for (size_t i = 0; i < N; ++i)
     {
         double avg_latency = static_cast<double>(total_latency_ns[i]) / cycle_count;
-        cout << "Stage " << std::setw(5) << labels[i] << " Average: " 
-             << std::fixed << std::setprecision(2) << avg_latency << " ns\n";
+        double overhead_pct = (total_sim_time > 0) ? (static_cast<double>(total_latency_ns[i]) / total_sim_time) * 100.0 : 0.0;
+        
+        cout << "Stage " << std::setw(5) << labels[i] << " | Avg Latency: " 
+             << std::fixed << std::setprecision(2) << std::setw(8) << avg_latency << " ns | Overhead: " 
+             << std::setprecision(2) << std::setw(5) << overhead_pct << "%\n";
     }
+    cout << "-------------------------------------------------------------\n";
 }
 
 template struct PipelinedCore<4>;
