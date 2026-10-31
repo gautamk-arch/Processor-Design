@@ -61,9 +61,9 @@ public:
     std::size_t romSize() const noexcept;
 
 private:
-    std::array<std::size_t, 27> entry_{};
+    std::array<std::size_t, 30> entry_{};
     std::vector<VerticalMicroInstruction> rom_;
-    std::array<VerticalMicroProgram, 27> programs_{};
+    std::array<VerticalMicroProgram, 30> programs_{};
     
     void build();
     static VerticalMicroInstruction make(

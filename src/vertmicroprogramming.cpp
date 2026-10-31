@@ -129,6 +129,9 @@ std::vector<VerticalMicroInstruction> VerticalMicroprogramming::makeInstructionP
         case Opcode::bland: baseLabel = "mbranchLand"; break;
         case Opcode::blor:  baseLabel = "mbranchLor"; break;
         case Opcode::blnot: baseLabel = "mbranchLnot"; break;
+        case Opcode::itof:  baseLabel = "mitof"; break;
+        case Opcode::ftoi:  baseLabel = "mftoi"; break;
+        case Opcode::sqrt:  baseLabel = "msqrt"; break;
         default:
             throw std::invalid_argument("Unknown SimpleRisc opcode");
     }
@@ -162,6 +165,9 @@ std::vector<VerticalMicroInstruction> VerticalMicroprogramming::makeInstructionP
         case Opcode::lsl:
         case Opcode::lsr:
         case Opcode::asr:
+        case Opcode::itof:
+        case Opcode::ftoi:
+        case Opcode::sqrt:
             wire(Microprogramming::STEP_EX, VDataPathCtrl::ALU_COMPUTE,   VPcCtrl::NONE, VFlagCtrl::NONE, aluFn); // EX
             wire(Microprogramming::STEP_RW, VDataPathCtrl::REG_WRITE_ALU, VPcCtrl::NONE, VFlagCtrl::NONE);        // RW
             break;
@@ -232,7 +238,7 @@ void VerticalMicroprogramming::build() {
     rom_[dispatchAddress].args = static_cast<std::uint16_t>(dispatchAddress);
 
     // 2. Populate all 27 instruction microprograms (3 micro-words each)
-    for (std::size_t i = 0; i < 27; ++i) {
+    for (std::size_t i = 0; i < 30; ++i) {
         const Opcode op = static_cast<Opcode>(i);
         VerticalMicroProgram prog;
         prog.entry = rom_.size();
