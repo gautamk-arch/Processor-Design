@@ -254,6 +254,12 @@ vector<string> assemble(const string &src, vector<string> &errors)
             inst.op = static_cast<Opcode>(25);
         else if (mnemonic == "blnot")
             inst.op = static_cast<Opcode>(26);
+        else if (mnemonic == "itof")
+            inst.op = static_cast<Opcode>(27);
+        else if (mnemonic == "ftoi")
+            inst.op = static_cast<Opcode>(28);
+        else if (mnemonic == "sqrtf")
+            inst.op = static_cast<Opcode>(29);
         else
         {
             errors.push_back("Line" + std::to_string(lNum) + ":Unknown Operation" + mnemonic + "'");
@@ -363,6 +369,21 @@ vector<string> assemble(const string &src, vector<string> &errors)
             else
             {
                 errors.push_back("Line " + std::to_string(lNum) + ": missing operands for land/lor/lnot");
+            }
+            inst.isImm = false;
+        }
+
+        else if (currOp >= 27 && currOp <= 29) 
+        {
+            if (ops.size() >= 2)
+            {
+                inst.rd = parseRegister(ops[0], lNum, errors);
+                inst.rs1 = parseRegister(ops[1], lNum, errors);
+                inst.rs2 = 0; // Unused 
+            }
+            else
+            {
+                errors.push_back("Line " + std::to_string(lNum) + ": missing operands for itof/ftoi/sqrtf");
             }
             inst.isImm = false;
         }

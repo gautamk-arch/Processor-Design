@@ -6,12 +6,13 @@
 static const string OPCODE_NAMES[]={
     "add", "sub", "mul", "div", "mod", "cmp", "and", "or",
     "not", "mov", "lsl", "lsr", "asr", "nop", "ld", "st",
-    "beq", "bgt", "b", "call", "ret", "land","lor","lnot","bland","blor","blnot"
+    "beq", "bgt", "b", "call", "ret", "land","lor","lnot","bland","blor","blnot",
+    "itof", "ftoi", "sqrtf"
 };
 
 string formatInstruction(const Instruction& inst){
     int opIndex=static_cast<int> (inst.op);
-    if(opIndex>26) return "Unknown Illegal Instruction";
+    if(opIndex>29) return "Unknown Illegal Instruction";
 
     string mnemonic=OPCODE_NAMES[opIndex];
 
@@ -60,6 +61,11 @@ string formatInstruction(const Instruction& inst){
         case Opcode::lor:
         case Opcode::lnot:
             asmLine<<" r"<<inst.rs1<<", r"<<inst.rs2;
+            break;
+        case Opcode::itof:
+        case Opcode::ftoi:
+        case Opcode::sqrt:
+            asmLine<<" r"<<inst.rd<<", r"<<inst.rs1;
             break;
         default:
             asmLine<<" r"<<inst.rd<<", r"<<inst.rs1<<", ";
