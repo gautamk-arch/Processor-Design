@@ -1,0 +1,33 @@
+CXX = g++
+CXXFLAGS = -std=c++17 -Wall -O2
+
+# Collect all source files in the src/ directory
+SRCS = $(wildcard src/*.cpp)
+
+# To build tests, we need all source files EXCEPT main.cpp to avoid "multiple definition of main"
+TEST_SRCS = $(filter-out src/main.cpp, $(SRCS)) test/test_preproc.cpp
+
+# Target executables
+TARGET = sim
+TEST_TARGET = test_preproc
+
+# Default target runs when you just type 'make'
+all: $(TARGET)
+
+# Build the main simulator (sim.exe)
+$(TARGET):
+	$(CXX) $(CXXFLAGS) $(SRCS) -o $(TARGET)
+	@echo "Build successful: $(TARGET)"
+
+# Build the preprocessor test (test_preproc.exe)
+test:
+	$(CXX) $(CXXFLAGS) $(TEST_SRCS) -o $(TEST_TARGET)
+	@echo "Build successful: $(TEST_TARGET)"
+
+# Clean up all executables and generated files
+clean:
+	rm -f $(TARGET) $(TARGET).exe $(TEST_TARGET) $(TEST_TARGET).exe
+	rm -f examples/*.hex examples/*.dis
+	@echo "Cleaned up executable and generated files."
+
+.PHONY: all test clean

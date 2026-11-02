@@ -137,18 +137,18 @@ void PipelinedCore<N>::run(CPU &cpu)    // run the program
     while (!isDone(cpu))
         step(cpu);
 
-        // To display total count of stalls, flushes and CPI
-        cout << "\nExecution stopped.\n";
-        cout << "--- Pipeline Execution Summary ---\n";
-        cout << "Total Cycles       : " << cycle_count << "\n";
-        cout << "Total Instructions : " << instruction_count << "\n";
-        cout << "Total Stalls       : " << stall_count << "\n";
-        cout << "Total Flushes      : " << flush_count << "\n";
+    // To display total count of stalls, flushes and CPI
+    cout << "\nExecution stopped.\n";
+    cout << "--- Pipeline Execution Summary ---\n";
+    cout << "Total Cycles       : " << cycle_count << "\n";
+    cout << "Total Instructions : " << instruction_count << "\n";
+    cout << "Total Stalls       : " << stall_count << "\n";
+    cout << "Total Flushes      : " << flush_count << "\n";
         
-        double cpi = (instruction_count > 0) ? static_cast<double>(cycle_count) / instruction_count : 0.0;
-        cout << "Final CPI          : " << std::fixed << std::setprecision(2) << cpi << "\n";
+    double cpi = (instruction_count > 0) ? static_cast<double>(cycle_count) / instruction_count : 0.0;
+    cout << "Final CPI          : " << std::fixed << std::setprecision(2) << cpi << "\n";
 
-        printLatencySummary();
+    printLatencySummary();
 }
 
 template <size_t N>

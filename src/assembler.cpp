@@ -282,7 +282,7 @@ vector<string> assemble(const string &src, vector<string> &errors)
                     }
                 }
 
-                if (nextOpIndex < ops.size())
+                if (static_cast<size_t>(nextOpIndex) < ops.size())
                 {
                     if (ops[nextOpIndex].find('r') != string::npos || ops[nextOpIndex] == "sp" || ops[nextOpIndex] == "ra")
                     {
