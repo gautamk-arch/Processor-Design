@@ -19,28 +19,34 @@ int main(int argc, char *argv[])
     // Arguments parsing
     if (argc < 2)
     {
-        std::cerr << "Usage: " << argv[0] << " [-d|--debug] <filename.asm>\n";
+        std::cerr << "Usage: " << argv[0] << " [-d|--debug] [--pipe4|--pipe6] [--hmicro|--vmicro] <filename.asm>\n";
         return 1;
     }
 
     string asmFileName = "";
     bool use_debugger = false;
+    bool is_pipe4 = false;
+    bool is_pipe6 = false;
+    bool is_hmicro = false;
+    bool is_vmicro = false;
 
     for (int i = 1; i < argc; i++)
     {
         string arg = argv[i];
-        if (arg == "-d" || arg == "--debug")
-        {
+        if (arg == "-d" || arg == "--debug") {
             use_debugger = true;
-        }
-        else if (arg.size() > 1 && arg[0] == '-')
-        {
-            // catches typos
+        } else if (arg == "--pipe4") {
+            is_pipe4 = true;
+        } else if (arg == "--pipe6") {
+            is_pipe6 = true;
+        } else if (arg == "--hmicro") {
+            is_hmicro = true;
+        } else if (arg == "--vmicro") {
+            is_vmicro = true;
+        } else if (arg.size() > 1 && arg[0] == '-') {
             cerr << "Error: Unknown option '" << arg << "'.\n";
             return 1;
-        }
-        else
-        {
+        } else {
             asmFileName = arg;
         }
     }
@@ -101,18 +107,46 @@ int main(int argc, char *argv[])
 
     // Architecture Configuration
     CPU cpu;
-    // initializing the 4-stage pipeline and microcode by default
-    std::unique_ptr<PipelineBase> pipeline = std::make_unique<PipelinedCore<4>>();
-    PipelineBase *activeCore = pipeline.get();
+    std::unique_ptr<PipelineBase> pipeline = nullptr;
+    PipelineBase *activeCore = nullptr;
+    string modeString = "\n[Startup Mode: ";
 
-    activeCore->isMicroprogrammed = true;
-    activeCore->useVertical = false; // defaults to horizontal microcode
+    if (is_pipe4) {
+        pipeline = std::make_unique<PipelinedCore<4>>();
+        activeCore = pipeline.get();
+        modeString += "4-Stage Pipelined ";
+    } else if (is_pipe6) {
+        pipeline = std::make_unique<PipelinedCore<6>>();
+        activeCore = pipeline.get();
+        modeString += "6-Stage Pipelined ";
+    } else {
+        // Default if no pipeline flags are provided
+        modeString += "Single-Cycle ";
+    }
 
-    cout << "\n[Mode: Horizontal Microprogrammed 4-stage Pipelined CPU]\n";
+    if (activeCore) {
+        if (is_hmicro) {
+            activeCore->isMicroprogrammed = true;
+            activeCore->useVertical = false;
+            modeString += "Horizontal Microprogrammed CPU]\n";
+        } else if (is_vmicro) {
+            activeCore->isMicroprogrammed = true;
+            activeCore->useVertical = true;
+            modeString += "Vertical Microprogrammed CPU]\n";
+        } else {
+            activeCore->isMicroprogrammed = false;
+            activeCore->useVertical = false;
+            modeString += "Hardwired CPU]\n";
+        }
+    } else {
+        modeString += "Hardwired CPU]\n";
+    }
+
+    cout<<modeString;
 
     // Load initial memory state into the base CPU
     cpu.loadHex(assembled_code);
-    activeCore->reset();
+    if (activeCore) activeCore->reset();    
 
     // Unified Execution and Debugger Loop
     if (use_debugger)

@@ -290,6 +290,9 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
 
                 if (isMicroprogrammed)
                 {
+                    // Update the micro-PC for the debugger using a standard offset formula: (opcode * max_steps) + current_step
+                    currentMicroPC = (static_cast<size_t>(inst.op) * 3) + static_cast<size_t>(Microprogramming::STEP_EX);
+
                     const MicroInstruction &u = useVertical ? vROM.fetchForStage(inst.op, Microprogramming::STEP_EX): hROM.fetchForStage(inst.op, Microprogramming::STEP_EX);
                     const bool anyFlag = u.get(ControlBit::FLAG_E_EN) || u.get(ControlBit::FLAG_GT_EN) || u.get(ControlBit::FLAG_LAND_EN) || u.get(ControlBit::FLAG_LOR_EN) || u.get(ControlBit::FLAG_LNOT_EN);
                     const aluop op = static_cast<aluop>(u.args); // ALU function lives in args
