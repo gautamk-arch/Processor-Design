@@ -2,7 +2,7 @@
 #include "alu.h"
 // ---------------- primitive "gates" ----------------
 // XOR built only from AND / OR / NOT.
-static uint64_t xor_(uint64_t x, uint64_t y) { return (x & ~y) | (~x & y); } // built xor function for simplicity
+// static uint64_t xor_(uint64_t x, uint64_t y) { return (x & ~y) | (~x & y); } // built xor function for simplicity
 
 static uint64_t maskOf(int width)
 {

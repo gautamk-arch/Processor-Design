@@ -25,7 +25,7 @@ string expandMacros(const string &src, vector<string> &errors)
 
         //since assembly is usually case insensitive so converting the instruction to lowercase
         string lowinst="";
-        for(int i=0;i<inst.length();i++)
+        for(size_t i=0;i<inst.length();i++)
         {
             lowinst+=tolower(inst[i]);
         }
@@ -43,7 +43,7 @@ string expandMacros(const string &src, vector<string> &errors)
             }
 
             // forces register to lowercase
-            for(int i=0;i<reg.length();i++)
+            for(size_t i=0;i<reg.length();i++)
             {
                 reg[i]=tolower(reg[i]);
             }
@@ -94,7 +94,7 @@ string expandMacros(const string &src, vector<string> &errors)
             else
             {
                 string reg = operands.substr(0, commaPos);
-                for(int i=0; i<reg.length(); i++) {
+                for(size_t i=0; i<reg.length(); i++) {
                     reg[i] = tolower(reg[i]);
                 }
                 string immStr = operands.substr(commaPos + 1);

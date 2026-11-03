@@ -67,7 +67,7 @@ void CPU::step(){
     static uint32_t cycleCount=0;
     cycleCount++;
     uint32_t currPC=pc;
-    uint32_t word;
+    uint32_t word=0;
 
     try{
         word=fetchInst();
@@ -276,7 +276,7 @@ void CPU::printStack() const{
     for(uint32_t addr =stack_base-4;addr>=stack_limit;addr-=4){
         cout<<"0x"<<std::setfill('0') << std::setw(8) <<std::hex <<addr << " : ";
 
-        if(addr<regs[sp]) {
+        if(addr < static_cast<uint32_t>(regs[sp])) {
             cout<< "....";
         }
         else{
@@ -284,7 +284,7 @@ void CPU::printStack() const{
             cout<<"0x"<<std::setfill('0')<<std::setw(8) <<std::hex<<word;
         }
 
-        if(addr==regs[sp]){
+        if(addr == static_cast<uint32_t>(regs[sp])) {
             cout<<" <-- sp";
         }
         if(addr==stack_base-4){
