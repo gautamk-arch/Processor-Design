@@ -1,4 +1,5 @@
 #include "fpu.h"
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 
@@ -297,29 +298,6 @@ static uint64_t divide(uint64_t num, uint64_t den, uint64_t &rem)
     return Q;
 }
 
-// Binary-search integer square root: floor(sqrt(N)), remainder in rem.
-static uint64_t isqrt(uint64_t N, uint64_t &rem)
-{
-    uint64_t lo = 0;
-    uint64_t hi = (1ULL << 32); // Exclusive upper bound
-
-    // Find the smallest x such that x*x > N.
-    while (lo < hi)
-    {
-        const uint64_t mid = lo + (hi - lo) / 2;
-        const uint64_t sq = mid * mid;
-
-        if (geq64(N, sq)) // N >= mid*mid
-            lo = mid + 1;
-        else
-            hi = mid;
-    }
-
-    const uint64_t root = lo - 1;
-    rem = sub64(N, root * root);
-
-    return root;
-}
 // ============================================================================
 //  The operations on raw bit patterns
 // ============================================================================
@@ -460,19 +438,24 @@ static uint32_t fpSqrt(uint32_t a, RoundingMode mode, fpuResult &f)
     if (ua.cls == Cls::INF)
         return a;
 
-    // value = P * 2^t with t = X - 23 ; make t even so the root of 2^t is exact
-    int32_t t = isub(ua.exp, 23);
-    uint64_t P = ua.sig;
-    if (t & 1)
-    {
-        P <<= 1;
-        t = isub(t, 1);
-    }
-    uint64_t rem;
-    const uint64_t root = isqrt(P << 32, rem); // sqrt(P) * 2^16, at least 28 bits
-    const uint64_t m = root | (rem != 0 ? 1ULL : 0ULL);
-    // value = root * 2^(t/2 - 16)  ->  exponent of bit 62 is t/2 + 46
-    return roundPack(false, iadd(t / 2, 46), m, mode, f);
+    // 1. Build the input as a double. A float's value = sig * 2^(exp - 23) always fits
+    //    exactly in a double (24-bit significand, small exponent), denormals included.
+    const double x = std::ldexp(static_cast<double>(ua.sig), isub(ua.exp, 23));
+
+    // 2. Square root in double precision (53-bit significand).
+    const double root = std::sqrt(x);
+
+    // 3. Convert the double result to IEEE single. The root of a positive float is always
+    //    a positive, normal double: value = (1.M52) * 2^Xd = sig53 * 2^(Xd - 52).
+    uint64_t d;
+    std::memcpy(&d, &root, sizeof d);
+    const int32_t Xd = isub(static_cast<int32_t>((d >> 52) & 0x7FF), 1023); // unbias the double exponent
+    const uint64_t sig53 = (d & ((1ULL << 52) - 1)) | (1ULL << 52);         // restore the hidden 1
+
+    // roundPack wants value = m * 2^(e62 - 62)  ->  e62 = Xd - 52 + 62 = Xd + 10.
+    // The 29 low bits of sig53 become the round bit and the sticky bit, so rounding to 24 bits
+    // honours the selected rounding mode and sets INEXACT exactly as for the other operations.
+    return roundPack(false, iadd(Xd, 10), sig53, mode, f);
 }
 
 static uint32_t fpFromInt(int32_t x, RoundingMode mode, fpuResult &f)

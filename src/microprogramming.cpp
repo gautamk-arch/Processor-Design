@@ -58,7 +58,7 @@ Microprogramming::makeInstructionProgram(Opcode opcode) {
     //        PC_WRITE           the PC changes (branch / call / ret); A_READ + PC_WRITE: pc <- A (ret)
     //        FLAG_*_EN          with PC_WRITE: branch only if that flag is set
     //                           without PC_WRITE: update that flag (cmp / land / lor / lnot)
-    //        args               ALU function, as an aluop value
+    //        args               ALU function, as an aluop value (itof / ftoi / sqrt: the FPU function)
     //   MA : LD_RESULT_WRITE    MDR <- memory[MAR]                 (ld)
     //        MAR_WRITE+MDR_WRITE  memory[MAR] <- store data        (st)
     //   RW : REG_DATA_WRITE     write the destination register
@@ -94,6 +94,10 @@ Microprogramming::makeInstructionProgram(Opcode opcode) {
         case Opcode::bland: baseLabel = "mbranchLand"; break;
         case Opcode::blor:  baseLabel = "mbranchLor"; break;
         case Opcode::blnot: baseLabel = "mbranchLnot"; break;
+        // FPU instructions (IEEE 754 single precision, see fpu.h / fpu.cpp)
+        case Opcode::itof:  baseLabel = "mitof"; break;
+        case Opcode::ftoi:  baseLabel = "mftoi"; break;
+        case Opcode::sqrt:  baseLabel = "msqrt"; break;
         default:
             throw std::invalid_argument("Unknown SimpleRisc opcode");
     }
@@ -109,7 +113,7 @@ Microprogramming::makeInstructionProgram(Opcode opcode) {
         for (ControlBit bit : bits) m.set(bit);
         m.args = args & ((1U << ARGS_BITS) - 1U);
     };
-    const std::uint16_t aluFn = static_cast<std::uint16_t>(opcode);   // add..asr: ISA opcode == aluop
+    const std::uint16_t aluFn = static_cast<std::uint16_t>(opcode);   // add..asr, itof, ftoi, sqrt: ISA opcode == function code
 
     switch (opcode) {
         case Opcode::add:
@@ -124,6 +128,13 @@ Microprogramming::makeInstructionProgram(Opcode opcode) {
         case Opcode::lsl:
         case Opcode::lsr:
         case Opcode::asr:
+        // FPU: same datapath as the integer ALU ops. EX computes the result
+        // from A (B is ignored by itof / ftoi / sqrt) and latches it in
+        // aluResult; RW writes it to rd. args selects the FPU function
+        // (fpuop::ITOF / FTOI / FSQRT), exactly as it selects the ALU function.
+        case Opcode::itof:
+        case Opcode::ftoi:
+        case Opcode::sqrt:
             wire(STEP_EX, {ControlBit::ALU_RESULT_WRITE}, aluFn);
             wire(STEP_RW, {ControlBit::REG_DATA_WRITE, ControlBit::ALU_RESULT_READ});
             break;
@@ -238,7 +249,7 @@ void Microprogramming::build() {
 std::size_t Microprogramming::entryFor(Opcode opcode) const {
     const auto raw = static_cast<std::size_t>(opcode);
     if (raw >= entry_.size() || entry_[raw] == std::numeric_limits<std::size_t>::max())
-        throw IllegalInstruction();   // unused opcode (27..31) or not built
+        throw IllegalInstruction();   // unused opcode (30..31) or not built
     return entry_[raw];
 }
 
