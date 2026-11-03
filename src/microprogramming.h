@@ -62,6 +62,10 @@ public:
         CONTROL_BITS + IMMEDIATE_BITS + BRANCH_TARGET_BITS + ARGS_BITS;
     static constexpr std::size_t MICROPROGRAM_SIZE = 1024;
 
+    // Number of opcodes that own a microprogram: the 27 integer / control
+    // instructions plus the 3 FPU instructions (itof, ftoi, sqrt).
+    static constexpr std::size_t OPCODE_COUNT = 30;
+
     Microprogramming();
     void reset();
 
@@ -85,9 +89,9 @@ public:
     static Opcode opcodeOf(const Instruction& inst) noexcept;
 
 private:
-    std::array<std::size_t, 27> entry_{};
+    std::array<std::size_t, OPCODE_COUNT> entry_{};
     std::vector<MicroInstruction> rom_;
-    std::array<MicroProgram, 27> programs_{};
+    std::array<MicroProgram, OPCODE_COUNT> programs_{};
 
     void build();
     static MicroInstruction make(
