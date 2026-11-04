@@ -7,7 +7,7 @@ using std::cout;
 
 static const char *opNames[] = {
     "add", "sub", "mul", "div", "mod", "cmp", "and", "or", "not", "mov", "lsl", "lsr", "asr",
-    "nop", "ld", "st", "beq", "bgt", "b", "call", "ret", "land", "lor", "lnot", "bland", "blor", "blnot", "fsqrt", "itof", "ftoi"};
+    "nop", "ld", "st", "beq", "bgt", "b", "call", "ret", "land", "lor", "lnot", "bland", "blor", "blnot", "sqrt", "itof", "ftoi"};
 
 bool writesRegister(const Instruction &inst, int reg)   // Checks whether the given instruction writes into the register
 {
@@ -28,9 +28,9 @@ bool writesRegister(const Instruction &inst, int reg)   // Checks whether the gi
     case Opcode::lsr:
     case Opcode::asr:
     case Opcode::ld:
-    // case Opcode::fsqrt:
-    // case Opcode::itof:
-    // case Opcode::ftoi:
+    case Opcode::sqrt:
+    case Opcode::itof:
+    case Opcode::ftoi:
         return inst.rd == reg;
     case Opcode::call:
         return reg == ra;
@@ -63,9 +63,9 @@ static void getSources(const Instruction &inst, int &srcA, int &srcB, int &srcSt
         break;
     case Opcode::lnot:
     case Opcode::ld:
-    // case Opcode::fsqrt:
-    // case Opcode::itof:  
-    // case Opcode::ftoi: 
+    case Opcode::sqrt:
+    case Opcode::itof:  
+    case Opcode::ftoi: 
         srcA = inst.rs1;
         break;
     case Opcode::not_op:
@@ -91,7 +91,7 @@ static void getSources(const Instruction &inst, int &srcA, int &srcB, int &srcSt
 template <size_t N>
 static int findProducer(const typename PipelinedCore<N>::Slot *stage, int exStage, int writeStage, int reg)
 {
-    for (int idx = exStage; idx < writeStage; ++idx)
+    for (int idx = exStage-1; idx < writeStage-1; ++idx)
         if (stage[idx].valid && writesRegister(stage[idx].inst, reg))
             return idx;
     return -1;
@@ -352,9 +352,9 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
                                 case Opcode::sub: f_op = fpuop::FSUB; break;
                                 case Opcode::mul: f_op = fpuop::FMUL; break;
                                 case Opcode::div: f_op = fpuop::FDIV; break;
-                                // case Opcode::fsqrt: f_op = fpuop::FSQRT; break;
-                                // case Opcode::itof:  f_op = fpuop::ITOF; break;
-                                // case Opcode::ftoi:  f_op = fpuop::FTOI; break;
+                                case Opcode::sqrt: f_op = fpuop::FSQRT; break;
+                                case Opcode::itof:  f_op = fpuop::ITOF; break;
+                                case Opcode::ftoi:  f_op = fpuop::FTOI; break;
                                 default: throw IllegalInstruction(); 
                             }
                             fpuResult res = cpu.fpu.execute(f_op, A, Bop);
@@ -374,7 +374,7 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
                 else
                 {
                     // FPU math
-                    if (inst.isFloat && (inst.op == Opcode::add || inst.op == Opcode::sub || inst.op == Opcode::mul || inst.op == Opcode::div || inst.op == Opcode::cmp /*|| inst.op == Opcode::fsqrt || inst.op == Opcode::itof || inst.op == Opcode::ftoi)*/))
+                    if (inst.isFloat && (inst.op == Opcode::add || inst.op == Opcode::sub || inst.op == Opcode::mul || inst.op == Opcode::div || inst.op == Opcode::cmp || inst.op == Opcode::sqrt || inst.op == Opcode::itof || inst.op == Opcode::ftoi))
                     {
                         if (inst.op == Opcode::cmp) {
                             fpuResult res = cpu.fpu.execute(fpuop::FCMP, A, B);
@@ -388,9 +388,9 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
                             else if (inst.op ==Opcode::sub) f_op =fpuop::FSUB;
                             else if (inst.op ==Opcode::mul) f_op =fpuop::FMUL;
                             else if (inst.op == Opcode::div) f_op = fpuop::FDIV;
-                            // else if (inst.op == Opcode::fsqrt) f_op = fpuop::FSQRT; 
-                            // else if (inst.op == Opcode::itof) f_op = fpuop::ITOF;  
-                            // else f_op = fpuop::FTOI;
+                            else if (inst.op == Opcode::sqrt) f_op = fpuop::FSQRT; 
+                            else if (inst.op == Opcode::itof) f_op = fpuop::ITOF;  
+                            else f_op = fpuop::FTOI;
                                 
                             fpuResult res = cpu.fpu.execute(f_op, A, B);
                             if (res.flag_DIVZERO) throw DivideByZero();
