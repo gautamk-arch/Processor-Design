@@ -258,7 +258,7 @@ vector<string> assemble(const string &src, vector<string> &errors)
             inst.op = static_cast<Opcode>(27);
         else if (mnemonic == "ftoi")
             inst.op = static_cast<Opcode>(28);
-        else if (mnemonic == "sqrtf")
+        else if (mnemonic == "sqrt")
             inst.op = static_cast<Opcode>(29);
         else
         {
@@ -379,11 +379,12 @@ vector<string> assemble(const string &src, vector<string> &errors)
             {
                 inst.rd = parseRegister(ops[0], lNum, errors);
                 inst.rs1 = parseRegister(ops[1], lNum, errors);
-                inst.rs2 = 0; // Unused 
+                inst.rs2 = 0; // Unused
+                inst.isFloat = true; 
             }
             else
             {
-                errors.push_back("Line " + std::to_string(lNum) + ": missing operands for itof/ftoi/sqrtf");
+                errors.push_back("Line " + std::to_string(lNum) + ": missing operands for itof/ftoi/sqrt");
             }
             inst.isImm = false;
         }

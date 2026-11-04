@@ -119,7 +119,15 @@ void CPU::execute (Instruction inst){
         case Opcode::div:
             f_op = fpuop::FDIV;
             break;
-
+        case Opcode::sqrt:              
+            f_op = fpuop::FSQRT;        
+            break;                      
+        case Opcode::itof:              
+            f_op = fpuop::ITOF;         
+            break;                      
+        case Opcode::ftoi:              
+            f_op = fpuop::FTOI;         
+            break;
         default:
             throw IllegalInstruction();
         }
