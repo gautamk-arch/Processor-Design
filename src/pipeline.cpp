@@ -91,7 +91,7 @@ static void getSources(const Instruction &inst, int &srcA, int &srcB, int &srcSt
 template <size_t N>
 static int findProducer(const typename PipelinedCore<N>::Slot *stage, int exStage, int writeStage, int reg)
 {
-    for (int idx = exStage-1; idx < writeStage-1; ++idx)
+    for (int idx = exStage-1; idx < writeStage; ++idx)
         if (stage[idx].valid && writesRegister(stage[idx].inst, reg))
             return idx;
     return -1;
