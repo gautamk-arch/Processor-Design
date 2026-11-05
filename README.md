@@ -156,6 +156,7 @@ risc201-cpu-simulator/
 └── simulator.exe
 
 ---
+```
 
 ## Documentation Directory
 
