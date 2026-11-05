@@ -8,17 +8,17 @@
 
 | Name | Enrollment No | Github link |
 | :--- | :--- | :--- |
+| **Adwait Shiva** | `25114005` | [@AdwaitS-A](https://github.com/AdwaitS-A) |
 | **Anant Kumar** | `25114012` | [@Anant1607](https://github.com/Anant1607) |
 | **Gautam Kannapiran** | `25114039` | [@gautamk-arch](https://github.com/gautamk-arch) |
 | **Devendra Sahu** | `25114029` | [@sahu236](https://github.com/sahu236) |
 | **Gunbir Singh** | `25114041` | [@gunbirsingh007-web](https://github.com/gunbirsingh007-web) |
-| **Adwait Shiva** | `25114005` | [@AdwaitS-A](https://github.com/AdwaitS-A) |
 
 ---
 
 # RISC201: Cycle-Accurate Pipelined CPU & Microprogrammed Simulator
 
-**RISC201** is a cycle-accurate, multi-architecture custom CPU simulator and complete compilation toolchain written in modern C++ (`C++23`). It models a Single-Cycle baseline alongside configurable **4-stage** and **6-stage pipelined processors**, featuring dynamic hazard resolution, an integrated **IEEE 754 Floating-Point Unit (FPU)**, and runtime-switchable **Hardwired, Horizontal Microprogrammed, and Vertical Microprogrammed** control units.
+**RISC201** is a cycle-accurate, multi-architecture custom CPU simulator and complete compilation toolchain written in modern C++ (`C++23`). It models a Single-Cycle baseline alongside configurable **4-stage** and **6-stage pipelined processors**, featuring dynamic hazard resolution, an integrated **ALU**, **IEEE 754 Floating-Point Unit (FPU)**, and runtime-switchable **Hardwired, Horizontal Microprogrammed, and Vertical Microprogrammed** control units.
 
 ---
 
@@ -26,14 +26,14 @@
 
 * **Multi-Depth Pipelined Architecture (`PipelinedCore<4>` & `PipelinedCore<6>`):**
   * **6-Stage Pipeline (`--pipe6`):** Instruction Fetch (**IF**), Operand Fetch (**OF**), Execute (**EX**), Memory Access 1 (**MA1**), Memory Access 2 (**MA2**), and Register Write-Back (**RW**) to accurately model split-cycle data cache access latencies.
-  * **4-Stage Pipeline (`--pipe4`):** Classic compacted pipeline (**IF**, **OF**, **EX/MA**, **RW**) for direct architectural IPC and stall penalty comparison against the 6-stage core.
+  * **4-Stage Pipeline (`--pipe4`):** Classic compacted pipeline (**IF**, **OF**, **EX**, **MA+RW**) for direct architectural IPC and stall penalty comparison against the 6-stage core.
   * **Single-Cycle Baseline:** Non-pipelined reference execution engine for architectural verification.
 * **Dynamic Hazard Resolution:**
   * **Data Forwarding (Bypassing):** Full forwarding network from `EX`, `MA1`, `MA2`, and `RW` pipeline latches back to the `EX` stage to eliminate Read-After-Write (RAW) stalls where data is ready.
-  * **Load-Use Hazard Interlocks:** Automatic hardware stall injection (including **2-cycle load-use stalls** in the 6-stage pipeline due to the split `MA1`/`MA2` memory stages).
+  * **Load-Use Hazard Interlocks:** Automatic hardware stall injection.
   * **Control Hazard Flushing:** Speculative fetch squashing and pipeline register flushing upon branch/jump resolution in the Execute stage.
 * **IEEE 754 Floating-Point Unit (FPU) & Optimized ALU:**
-  * Dedicated single-precision ($32\text{-bit}$ IEEE 754) floating-point execution paths supporting `fadd`, `fsub`, `fmul`, `fdiv`, hardware square root (`sqrt`), and bidirectional type conversion (`itof` and `ftoi`).
+  * Dedicated single-precision ($32\text{-bit}$ IEEE 754) floating-point execution paths supporting `addf`, `subf`, `mulf`, `divf`, hardware square root (`sqrt`), and bidirectional type conversion (`itof` and `ftoi`).
   * Optimized integer ALU supporting arithmetic, bitwise logical, and barrel-shifter operations with hardware flag generation.
 * **7 Configurable Execution Modes (Hardwired & Decoupled Microprogramming):**
   * Supports **Hardwired Control** for single-cycle stage decoding, alongside **Horizontal Microprogramming** (wide unencoded control words for maximum parallelism) and **Vertical Microprogramming** (compact encoded $\mu\text{Ops}$ requiring secondary decoding) with real-time $\mu\text{PC}$ tracking.
