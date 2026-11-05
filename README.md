@@ -120,19 +120,56 @@ For debugger commands, pls refer here [link for debugger.md](docs/debugger_and_e
 
 ```text
 risc201-cpu-simulator/
-├── main.cpp               # CLI driver, argument parser, toolchain pipeline & interactive debugger loop
-├── preprocessor.h/.cpp    # Macro expansion engine for full-descending stack operations
-├── assembler.h/.cpp       # Two-pass RISC201 assembler (.asm -> .hex) with symbol table & error reporting
-├── disassembler.h/.cpp    # Binary/Hexadecimal instruction parser and assembly reconstructor (.hex -> .dis)
-├── cpu.h/.cpp             # Base architectural state, register file, memory protection & ASCII stack visualizer
-├── pipeline.h/.cpp        # Template-based PipelinedCore<4> & PipelinedCore<6> reverse-evaluation engine,
-│                          # hazard detection unit, forwarding multiplexers, and latency profiler
-├── alu.h/.cpp             # Optimized integer Arithmetic Logic Unit (arithmetic, barrel shift, bitwise)
-├── fpu.h/.cpp             # IEEE 754 Floating-Point Unit (fadd, fsub, fmul, fdiv, fsqrt, itof, ftoi)
-├── control.h/.cpp         # Hardwired decoder, Horizontal & Vertical Control Memory ROMs, and microPC logic
-├── Makefile               # Build configuration for C++23 compilation
-├── tests/                 # Assembly test suite (ALU, FPU, recursion/stack bounds, hazard stress tests)
-└── docs/                  # Deep-dive architectural documentation
+├── docs/                                            
+│   ├── images/                                     
+│   │   ├── aludiag1.png / aludiag2.png              
+│   │   └── pipeline1.jpeg / pipeline2.jpeg          
+│   ├── Test Comparisons.xlsx                        
+│   ├── arithmetic_logical_unit.md                  
+│   ├── assembly_toolchain_preprocessor.md         
+│   ├── debugger_and_exceptions.md                   
+│   ├── floating_point_unit.md                     
+│   ├── horizontal_microprogramming.md              
+│   ├── pipelining_and_hazards.md                   
+│   ├── risc201_instruction_set_architecture_isa.md 
+│   └── vertical_microprogramming.md                 
+├── examples/                                      
+│   └── array_sum.asm, factorial.asm, fpu_test.asm, stack_overflow.asm, sum_loop.asm, etc.
+├── src/                                         
+│   ├── alu.h / .cpp                             
+│   ├── assembler.h / .cpp                        
+│   ├── cpu.h / .cpp                             
+│   ├── disassembler.h / .cpp                     
+│   ├── exceptions.h / .cpp                     
+│   ├── fpu.h / .cpp                             
+│   ├── isa.h / .cpp                              
+│   ├── main.cpp                     
+│   ├── microprogramming.h / .cpp                 
+│   ├── pipeline.h / .cpp                     
+│   ├── preprocessor.h / .cpp                      
+│   └── vertmicroprogramming.h / .cpp               
+├── test/                                          
+│   └── test_preproc.cpp                          
+├── .gitignore                                      
+├── MakeFile                                        
+├── README.md                                     
+└── simulator.exe                                   
+
+
+risc201-cpu-simulator/
+├── main.cpp              
+├── preprocessor.h/.cpp    
+├── assembler.h/.cpp       
+├── disassembler.h/.cpp  
+├── cpu.h/.cpp            
+├── pipeline.h/.cpp       
+│                          
+├── alu.h/.cpp            
+├── fpu.h/.cpp           
+├── control.h/.cpp       
+├── Makefile              
+├── tests/               
+└── docs/                 
     ├── pipeline.md
     ├── isa_fpu.md
     ├── control.md
