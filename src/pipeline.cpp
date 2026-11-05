@@ -7,8 +7,8 @@ using std::cout;
 
 static const char *opNames[] = {
     "add", "sub", "mul", "div", "mod", "cmp", "and", "or", "not", "mov", "lsl", "lsr", "asr",
-    "nop", "ld", "st", "beq", "bgt", "b", "call", "ret", "land", "lor", "lnot", "bland", "blor", "blnot", "sqrt", "itof", "ftoi"};
-
+    "nop", "ld", "st", "beq", "bgt", "b", "call", "ret", "land", "lor", "lnot", "bland", "blor", "blnot", "itof", "ftoi", "sqrt"};
+    
 bool writesRegister(const Instruction &inst, int reg)   // Checks whether the given instruction writes into the register
 {
     if (reg < 0)
