@@ -274,7 +274,6 @@ void PipelinedCore<N>::step(CPU &cpu)   // run individual instruction
                 }
                 instruction_count++;
                 stage[i].valid = false;
-                continue;
             }
 
             // ------------------------------------
