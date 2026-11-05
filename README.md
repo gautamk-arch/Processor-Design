@@ -10,8 +10,8 @@
 | :--- | :--- | :--- |
 | **Adwait Shiva** | `25114005` | [@AdwaitS-A](https://github.com/AdwaitS-A) |
 | **Anant Kumar** | `25114012` | [@Anant1607](https://github.com/Anant1607) |
-| **Gautam Kannapiran** | `25114039` | [@gautamk-arch](https://github.com/gautamk-arch) |
 | **Devendra Sahu** | `25114029` | [@sahu236](https://github.com/sahu236) |
+| **Gautam Kannapiran** | `25114039` | [@gautamk-arch](https://github.com/gautamk-arch) |
 | **Gunbir Singh** | `25114041` | [@gunbirsingh007-web](https://github.com/gunbirsingh007-web) |
 
 ---
@@ -153,28 +153,7 @@ risc201-cpu-simulator/
 ├── .gitignore                                      
 ├── MakeFile                                        
 ├── README.md                                     
-└── simulator.exe                                   
-
-
-risc201-cpu-simulator/
-├── main.cpp              
-├── preprocessor.h/.cpp    
-├── assembler.h/.cpp       
-├── disassembler.h/.cpp  
-├── cpu.h/.cpp            
-├── pipeline.h/.cpp       
-│                          
-├── alu.h/.cpp            
-├── fpu.h/.cpp           
-├── control.h/.cpp       
-├── Makefile              
-├── tests/               
-└── docs/                 
-    ├── pipeline.md
-    ├── isa_fpu.md
-    ├── control.md
-    └── debugger.md
-```
+└── simulator.exe
 
 ---
 
@@ -186,7 +165,7 @@ For an in-depth exploration of the microarchitectural design decisions, encoding
 2. *[Assembler and Preprocessor](docs/assembly_toolchain_preprocessor.md)*
 3. *[ALU](docs/arithmetic_logical_unit.md)*
 4. *[FPU](docs/floating_point_unit.md)*
-5. "[Horizontal_microprogramming](docs/horizontal_microprogramming.md)
-5. "[Vertical_microprogramming](docs/vertical_microprogramming.md)
-6. **[Pipeline Architecture & Hazard Logic](docs/pipelining_and_hazards.md)**
-8. **[Custom Debugger & Exception Handling](docs/debugger_and_exceptions.md)**
+5. *[Horizontal_microprogramming](docs/horizontal_microprogramming.md)*
+5. *[Vertical_microprogramming](docs/vertical_microprogramming.md)*
+6. *[Pipeline Architecture & Hazard Logic](docs/pipelining_and_hazards.md)*
+8. *[Custom Debugger & Exception Handling](docs/debugger_and_exceptions.md)*
