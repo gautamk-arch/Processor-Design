@@ -10,7 +10,7 @@ The 4-stage pipeline architecture (`PipelinedCore<4>`) streamlines execution int
 *   **MA/RW (Memory Access & Register Write-Back):** This is a combined stage. It handles reading from or writing to the simulated data memory, and immediately writes the final computed result (or loaded memory value) back into the destination register.
 *   **Design Decision:** The MA and RW stages are combined to shorten the overall pipeline length. This reduces the latency penalty when an instruction must wait for a previous memory load (shrinking the load-use hazard window) and simplifies the control logic.
 
-![4-Stage Datapath Diagram](images/image_705323.png)
+![4-Stage Datapath Diagram](pipeline1.png)
 
 ### 6-Stage Pipeline
 The 6-stage pipeline architecture (`PipelinedCore<6>`) extends the memory phase to optimize performance and handle exceptions safely:
@@ -20,7 +20,7 @@ The 6-stage pipeline architecture (`PipelinedCore<6>`) extends the memory phase 
 *   **RW (Register Write-Back):** Writes the final result from the ALU, FPU, or MDR back into the designated architectural register.
 *   **Design Decision:** Splitting memory access across MA1 and MA2 allows the hardware to calculate the address and validate safety constraints before attempting a physical read/write. Deferring the exception to MA2 ensures precise exception handling—older instructions are allowed to finish writing back their results before the pipeline crashes, perfectly synchronizing the hardware state.
 
-![6-Stage Datapath Diagram](images/image_705306.png)
+![6-Stage Datapath Diagram](pipeline2.png)
 
 ## 2. Implementation Mechanics
 
