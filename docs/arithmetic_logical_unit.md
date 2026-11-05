@@ -3,7 +3,7 @@
 ## 1. Purpose
 The ALU is the 32-bit integer execution unit. For each operation, it returns a result value, an optional upper word (multiply only), and status flags (equal, greater-than, logical flags, error). Every addition and subtraction, including those inside multiply and divide, goes through one Brent-Kung adder.
 
-![ALU Architecture Diagram](images/image_7e53a2.jpg)
+![ALU Architecture Diagram](aludiag1.png)
 
 ## 2. Brent-Kung Adder
 *   **Step 1:** Each bit pair computes generate (`a AND b`, so this bit creates a carry) and propagate (`a XOR b`, so this bit passes an incoming carry on).
@@ -13,7 +13,7 @@ The ALU is the 32-bit integer execution unit. For each operation, it returns a r
 *   **Trade-off:** Brent-Kung needs about `2n` combine cells and `2 * log2(n) - 1` levels (9 for 32 bits). A dense tree such as Kogge-Stone needs about `n * log2(n)` cells but only `log2(n)` levels. Brent-Kung therefore has less hardware and wiring, at the cost of a little more delay. The same adder is used at 32-bit and 33-bit widths.
 *   **Width helper:** The adder is parameterized by bit width, and the mask helper keeps results inside it. The extra 33rd bit holds the sign or borrow in Booth and division.
 
-![Brent-Kung Adder Flowchart](images/image_7e50be.png)
+![Brent-Kung Adder Flowchart](aludiag2.png)
 
 ## 3. Arithmetic Operations
 *   **ADD/SUB / negate:** ADD is the adder. SUB is `A + (~B) + 1`, with the `+1` supplied as carry-in. Negation is `~x + 1`, used for sign handling in division.
