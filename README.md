@@ -51,8 +51,8 @@
 ## Quick Start / How to Run
 
 ### 1. Prerequisites
-* **Compiler:** GCC (`g++`) with **C++17 / C++23** support (tested with **MSYS2 MinGW-w64 `g++` 13+** on Windows and `g++` on Linux/macOS).
-* **Build System:** GNU `make` (optional; direct compilation via `g++` is also supported).
+* **Compiler:** GCC (`g++`) with **C++23** support (tested with **MSYS2 MinGW-w64 `g++` 13+** on Windows and `g++` on Linux/macOS).
+* **Build System:** direct compilation via `g++` is supported
 
 ### 2. Building the Simulator
 
@@ -111,8 +111,8 @@ Append `-d` or `--debug` to any command to enter the interactive hardware debugg
 ```bash
 ./risc201_sim -d --pipe6 --hmicro examples/factorial.asm
 ```
-
-For debugger commands, pls refer here [link for debugger.md]
+Debugger also includes stack visualizer.
+For debugger commands, pls refer here [link for debugger.md](docs/debugger_and_exceptions.md)
 
 ---
 
@@ -145,11 +145,11 @@ risc201-cpu-simulator/
 
 For an in-depth exploration of the microarchitectural design decisions, encoding formats, hazard resolution tables, and experimental evaluation, please refer to our dedicated technical documentation:
 
-1. **[Pipeline Architecture & Hazard Logic](docs/pipeline.md)**
-   * Detailed comparison of the 4-stage (`IF-OF-EX-RW`) vs. 6-stage (`IF-OF-EX-MA1-MA2-RW`) pipelines, reverse-order latch evaluation, full forwarding paths, 2-cycle load-use hazard stalls, and branch flush penalties.
-2. **[Instruction Set Architecture (ISA) & FPU](docs/isa_fpu.md)**
-   * Complete RISC201 instruction encoding reference, register conventions, two-pass assembly grammar, optimized ALU design, and IEEE 754 floating-point algorithms (`fsqrt`, `itof`, `ftoi`).
-3. **[Microprogramming & Control Unit](docs/control.md)**
-   * Architectural breakdown of the Hardwired decoder vs. Horizontal and Vertical Control Store ROMs, $\mu\text{Op}$ bit-field layouts, $\mu\text{PC}$ sequencing logic, and control overhead comparisons.
-4. **[Custom Debugger & Latency Profiling](docs/debugger.md)**
-   * Guide to the CLI debugger internals, live architectural hot-swapping, runtime stack boundary protection, ASCII stack frame visualization, and nanosecond stage latency profiling methodology.
+1. *[Instruction Set Architecture (ISA)](docs/risc201_instruction_set_architecture_isa.md)*
+2. *[Assembler and Preprocessor](docs/assembly_toolchain_preprocessor.md)*
+3. *[ALU](docs/arithmetic_logical_unit.md)*
+4. *[FPU](docs/floating_point_unit.md)*
+5. "[Horizontal_microprogramming](docs/horizontal_microprogramming.md)
+5. "[Vertical_microprogramming](docs/vertical_microprogramming.md)
+6. **[Pipeline Architecture & Hazard Logic](docs/pipelining_and_hazards.md)**
+8. **[Custom Debugger & Exception Handling](docs/debugger_and_exceptions.md)**
