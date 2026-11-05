@@ -56,23 +56,10 @@
 
 ### 2. Building the Simulator
 
-#### Option A: Using `Makefile` (Recommended)
+#### Direct Compilation via `g++` (MSYS2 / Linux)
+Compile in terminal while in RISC201 directory run:
 ```bash
-# Clone the repository
-git clone https://github.com/gautamk-arch/Processor-Design.git
-cd Processor-Design
-
-# Build the simulator binary
-make
-
-# (Optional) Clean build artifacts and generated .hex/.dis files
-make clean
-```
-
-#### Option B: Direct Compilation via `g++` (MSYS2 / Linux)
-If you are compiling directly in an MSYS2 terminal without Make, run:
-```bash
-g++ -std=c++23 -O2 -Wall -Wextra main.cpp preprocessor.cpp assembler.cpp disassembler.cpp cpu.cpp pipeline.cpp alu.cpp fpu.cpp exceptions.cpp isa.cpp microprogramming.cpp vertmicroprogramming.cpp -o simulator
+g++ src/*.cpp -o simulator.exe
 ```
 
 ---
