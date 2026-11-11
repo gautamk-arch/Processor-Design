@@ -20,6 +20,7 @@ const int32_t stack_limit=cap_of_data_mem-1024;
 class CPU
 {
     template<size_t N> friend struct PipelinedCore;
+    friend struct TraceExporter; // visualizer trace exporter (tracer.cpp)
 private:
     ALU alu;
     FPU fpu;
