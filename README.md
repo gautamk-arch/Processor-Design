@@ -111,7 +111,7 @@ You can launch the simulator in any of the **7 architectural configurations** di
 
 Append `-d` or `--debug` to any command to enter the interactive hardware debugger:
 ```bash
-./risc201_sim -d --pipe6 --hmicro examples/factorial.asm
+./risc201_sim -d examples/factorial.asm
 ```
 Debugger also includes stack visualizer.
 For debugger commands, pls refer here [link for debugger.md](docs/debugger_and_exceptions.md)
