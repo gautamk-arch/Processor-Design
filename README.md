@@ -45,6 +45,8 @@
   * Runtime hardware exception handling for stack overflow, stack underflow, unaligned accesses, and stack-heap boundary collisions, paired with an interactive ASCII stack memory frame renderer.
 * **Integrated CLI Debugger & Nanosecond Stage Latency Profiling:**
   * Interactive debugging shell supporting breakpoints, single-stepping, register/memory inspection, live architecture hot-swapping (`mode` command), ASCII pipeline stage diagrams, and `std::chrono` nanosecond-precision stage latency and control-unit overhead profiling.
+* **Interactive Web Pipeline Visualizer (`simtrace` + `trace.html`):**
+  * A trace exporter runs the real simulator and records every cycle to a JSON trace, which a standalone HTML page replays with play / step / scrub controls. It shows the current pipeline stage of every instruction, registers and flags, data memory and stack, the active micro-words and control bits ($\mu\text{PC}$ / ROM view), ALU operands and flags, FPU IEEE 754 bit fields and exception flags, an instruction × cycle timeline (stalls and flushes marked), an event log, and per-stage profiling. Supports switching between the 4-stage and 6-stage pipelines and between Hardwired, Horizontal and Vertical control units.
 
 ---
 
@@ -116,6 +118,41 @@ For debugger commands, pls refer here [link for debugger.md](docs/debugger_and_e
 
 ---
 
+### 5. Launching the Web Pipeline Visualizer
+
+The visualizer is built from `tracer.cpp` (kept in the project root, outside `src/`, because it has its own `main()`) together with the simulator sources in `src/` except `src/main.cpp`. It needs `page.html` / `template.html` from the project root.
+
+#### Build the trace exporter (`simtrace`)
+From the RISC201 directory run:
+```bash
+g++ -std=c++17 -O0 -g -Wl,--stack,268435456 -Isrc tracer.cpp $(ls src/*.cpp | grep -v '/main.cpp$') -o simtrace
+```
+The larger stack size (`-Wl,--stack`) is needed on Windows (MinGW).
+
+#### Generate and open the visualizer for a program
+```bash
+./simtrace examples/array_sum.asm --html template.html
+start trace.html          # Windows  (use xdg-open on Linux / open on macOS)
+```
+This runs the program on all 6 pipelined configurations (4-/6-stage × Hardwired / Horizontal / Vertical), writes `trace.json`, and produces a standalone `trace.html` that opens in any browser. Use `-o name.json` to choose the output name (the page is then written as `name.html`) and `--only pipe6-hmicro` to trace a single configuration (`pipe4|pipe6` + `-hard|-hmicro|-vmicro`).
+
+If `template.html` is missing, rebuild it from `page.html`:
+```bash
+printf '<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body>\n' > template.html
+cat page.html >> template.html
+printf '\n</body></html>\n' >> template.html
+```
+
+#### Using the page
+* Transport bar: first / back / play / forward / last, scrubber, speed, and jump to the previous / next stall or flush; keyboard shortcuts are supported.
+* Switch between 4-stage / 6-stage and Hardwired / Horizontal / Vertical µcode at the top of the page.
+* Click the dot beside a program row to set a breakpoint, click any cell of the instruction × cycle chart to jump to that cycle, or use **Load trace** (or drag and drop) to open a different `trace.json`.
+* Every cycle is the pipeline as the simulator's `pipe` diagram prints it after that step. Profiling times are host wall-clock nanoseconds of the simulator, not modelled hardware delay.
+
+**Limitations:** the Single-Cycle baseline is not covered by the visualizer, and the ALU/FPU panels do not recompute `itof`, `ftoi` and `sqrt` results (shown as unsupported).
+
+---
+
 ## Project Structure
 
 ```text
@@ -150,6 +187,8 @@ risc201-cpu-simulator/
 │   └── vertmicroprogramming.h / .cpp               
 ├── test/                                          
 │   └── test_preproc.cpp                          
+├── tracer.cpp                                  # visualizer trace exporter (builds simtrace)
+├── page.html / template.html                   # visualizer web page (template.html = page.html wrapped as a full document)
 ├── .gitignore                                      
 ├── MakeFile                                        
 ├── README.md                                     
